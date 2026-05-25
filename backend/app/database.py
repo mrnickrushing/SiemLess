@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -8,6 +10,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -45,6 +49,20 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create all tables in the database."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Create all tables, retrying until the database is reachable."""
+    max_attempts = 15
+    delay = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return
+        except Exception as exc:
+            if attempt == max_attempts:
+                raise
+            logger.warning(
+                "Database not ready (attempt %d/%d): %s — retrying in %ds",
+                attempt, max_attempts, exc, delay,
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30)
