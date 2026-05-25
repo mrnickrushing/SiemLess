@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: siemless
+      POSTGRES_PASSWORD: siemless_secret
+      POSTGRES_DB: siemless
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siemless"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://siemless:siemless_secret@postgres:5432/siemless
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: change-me-in-production-use-openssl-rand-hex-32
+      SYSLOG_HOST: "0.0.0.0"
+      SYSLOG_PORT: "514"
+      # Optional: set these to enable external threat intel lookups
+      # THREAT_INTEL_ABUSEIPDB_KEY: ""
+      # THREAT_INTEL_VIRUSTOTAL_KEY: ""
+      # SLACK_WEBHOOK_URL: ""
+      # SMTP_HOST: ""
+      # SMTP_PORT: "587"
+      # SMTP_USER: ""
+      # SMTP_PASS: ""
+      # ALERT_EMAIL: ""
+    ports:
+      - "8000:8000"
+      - "514:514/udp"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - log_uploads:/tmp/siemless_uploads
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  log_uploads:
