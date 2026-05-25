@@ -1,7 +1,6 @@
 """
 Stats router: aggregated statistics and dashboard metrics.
 """
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -294,34 +293,6 @@ async def geo_distribution(
     return {"hours": hours, "total": total, "items": items}
 
 
-@router.get("/log-type-distribution", summary="Event counts by log type")
-async def log_type_distribution(
-    hours: int = Query(24, ge=1, le=720),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
-
-    result = await db.execute(
-        select(SecurityEvent.log_type, func.count().label("count"))
-        .where(SecurityEvent.timestamp >= since)
-        .group_by(SecurityEvent.log_type)
-        .order_by(func.count().desc())
-    )
-    rows = result.all()
-
-    total = sum(row.count for row in rows)
-    items = [
-        {
-            "log_type": row.log_type,
-            "count": row.count,
-            "percentage": round((row.count / total * 100), 1) if total > 0 else 0,
-        }
-        for row in rows
-    ]
-
-    return {"hours": hours, "total": total, "items": items}
-
-
 @router.get("/alert-trend", summary="Alert creation trend over time")
 async def alert_trend(
     hours: int = Query(24, ge=1, le=168),
@@ -374,40 +345,31 @@ async def alert_trend(
 
 @router.get("/dashboard", summary="Aggregated dashboard statistics")
 async def get_dashboard(db: AsyncSession = Depends(get_db)) -> dict:
-    """Single endpoint returning all dashboard data. Independent scalar queries
-    run concurrently via asyncio.gather for improved latency."""
+    """Single endpoint returning all dashboard data.
+    Queries run sequentially on the same AsyncSession to avoid
+    concurrent-use errors (AsyncSession is not concurrency-safe)."""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     one_hour_ago = now - timedelta(hours=1)
     since_24h = now - timedelta(hours=24)
 
-    # --- Parallel scalar queries via asyncio.gather ---
-    (
-        events_today,
-        events_last_hour,
-        open_alerts,
-        critical_alerts,
-        high_alerts,
-        active_rules,
-        threats_detected,
-    ) = await asyncio.gather(
-        db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= today_start)),
-        db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= one_hour_ago)),
-        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open")),
-        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "critical")),
-        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "high")),
-        db.scalar(select(func.count()).select_from(CorrelationRule).where(CorrelationRule.enabled.is_(True))),
-        db.scalar(select(func.count()).select_from(ThreatIndicator)),
-    )
+    # --- Sequential scalar queries (safe for AsyncSession) ---
+    events_today     = await db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= today_start)) or 0
+    events_last_hour = await db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= one_hour_ago)) or 0
+    open_alerts      = await db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open")) or 0
+    critical_alerts  = await db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "critical")) or 0
+    high_alerts      = await db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "high")) or 0
+    active_rules     = await db.scalar(select(func.count()).select_from(CorrelationRule).where(CorrelationRule.enabled.is_(True))) or 0
+    threats_detected = await db.scalar(select(func.count()).select_from(ThreatIndicator)) or 0
 
     overview = {
-        "total_events_today": events_today or 0,
-        "events_last_hour": events_last_hour or 0,
-        "open_alerts": open_alerts or 0,
-        "critical_alerts": critical_alerts or 0,
-        "high_alerts": high_alerts or 0,
-        "active_rules": active_rules or 0,
-        "threats_detected": threats_detected or 0,
+        "total_events_today": events_today,
+        "events_last_hour": events_last_hour,
+        "open_alerts": open_alerts,
+        "critical_alerts": critical_alerts,
+        "high_alerts": high_alerts,
+        "active_rules": active_rules,
+        "threats_detected": threats_detected,
     }
 
     # --- Events over time (24h, per-severity per hour) ---
