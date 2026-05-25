@@ -47,47 +47,10 @@ class SyslogUDPProtocol(asyncio.DatagramProtocol):
         logger.info("Syslog UDP connection closed: %s", exc)
 
 
-class SyslogTCPProtocol(asyncio.Protocol):
-    """asyncio TCP protocol for syslog ingestion."""
-
-    def __init__(self, message_queue: asyncio.Queue) -> None:
-        self._queue = message_queue
-        self._buffer = b""
-        self._peer: tuple = ("unknown", 0)
-
-    def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore[override]
-        peer = transport.get_extra_info("peername")
-        if peer:
-            self._peer = peer
-
-    def data_received(self, data: bytes) -> None:
-        self._buffer += data
-        # Split on newlines; syslog messages are newline-delimited over TCP
-        while b"\n" in self._buffer:
-            line, self._buffer = self._buffer.split(b"\n", 1)
-            raw = line.decode("utf-8", errors="replace").strip()
-            if raw:
-                try:
-                    self._queue.put_nowait((raw, self._peer[0]))
-                except asyncio.QueueFull:
-                    logger.warning("Syslog ingestion queue full, dropping message")
-
-    def connection_lost(self, exc: Optional[Exception]) -> None:
-        # Process any remaining buffered data
-        if self._buffer:
-            raw = self._buffer.decode("utf-8", errors="replace").strip()
-            if raw:
-                try:
-                    self._queue.put_nowait((raw, self._peer[0]))
-                except asyncio.QueueFull:
-                    pass
-
-
 async def _store_event(raw_log: str, source_ip: str) -> None:
     """Parse and store a single syslog message."""
     try:
         parsed = _log_parser.parse(raw_log, log_source="syslog")
-        # Override source_ip with the sender's IP if not already parsed
         if not parsed.get("source_ip"):
             parsed["source_ip"] = source_ip
 
@@ -120,7 +83,6 @@ async def _store_event(raw_log: str, source_ip: str) -> None:
             await db.commit()
             logger.debug("Stored syslog event %s from %s", event.id, source_ip)
 
-            # Run correlation engine
             try:
                 from app.services.correlation import correlation_engine
                 from app.services.alerting import alert_service
@@ -166,9 +128,9 @@ class SyslogServer:
         host = host or settings.SYSLOG_HOST
         port = port or settings.SYSLOG_PORT
 
-        loop = asyncio.get_event_loop()
+        # FIX: use get_running_loop() — get_event_loop() is deprecated in Python 3.10+
+        loop = asyncio.get_running_loop()
 
-        # Start processor
         self._processor_task = asyncio.create_task(_process_queue(self._queue))
 
         # Start UDP listener
@@ -182,7 +144,10 @@ class SyslogServer:
         except OSError as exc:
             logger.warning("Could not bind syslog UDP port %d: %s", port, exc)
 
-        # Start TCP listener
+        # Start TCP listener using StreamReader/Writer (consistent with _handle_tcp_client).
+        # NOTE: SyslogTCPProtocol (asyncio.Protocol subclass) was previously defined but
+        # never wired up — TCP handling always went through _handle_tcp_client via
+        # asyncio.start_server. The dead Protocol class has been removed.
         try:
             self._tcp_server = await asyncio.start_server(
                 lambda r, w: self._handle_tcp_client(r, w),
