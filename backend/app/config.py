@@ -1,3 +1,4 @@
+import logging
 import sys
 from typing import Optional
 
@@ -18,6 +19,8 @@ _DEFAULT_PASSWORDS = {
     "siemless",
 }
 
+_log = logging.getLogger(__name__)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -32,7 +35,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    # Database — Railway provides postgresql:// or postgres://, we normalise below
+    # Database
     DATABASE_URL: str = "postgresql+asyncpg://siemless:siemless@localhost:5432/siemless"
 
     # Redis
@@ -41,16 +44,16 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "changeme-super-secret-key-for-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # Admin credentials
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: Optional[str] = None  # must be set via env var
+    ADMIN_PASSWORD: Optional[str] = None
 
-    # CORS — comma-separated list of allowed origins, or * for dev
+    # CORS
     CORS_ORIGINS: str = "*"
 
-    # Port — Railway injects $PORT
+    # Port
     PORT: int = 8000
 
     # Syslog server
@@ -58,11 +61,11 @@ class Settings(BaseSettings):
     SYSLOG_PORT: int = 514
     SYSLOG_ENABLED: bool = True
 
-    # Threat intel API keys (optional)
+    # Threat intel
     THREAT_INTEL_VIRUSTOTAL_KEY: Optional[str] = None
     THREAT_INTEL_ABUSEIPDB_KEY: Optional[str] = None
 
-    # SMTP settings for email alerts
+    # SMTP
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
     SMTP_USER: Optional[str] = None
@@ -70,18 +73,18 @@ class Settings(BaseSettings):
     SMTP_TLS: bool = True
     ALERT_EMAIL: Optional[str] = None
 
-    # Slack alerts
+    # Slack / webhook
     SLACK_WEBHOOK_URL: Optional[str] = None
-
-    # Generic webhook
     ALERT_WEBHOOK_URL: Optional[str] = None
 
-    # GeoIP database path
+    # GeoIP
     GEOIP_DB_PATH: Optional[str] = "/data/GeoLite2-City.mmdb"
 
-    # Pagination defaults
+    # Pagination
+    # Default lowered from 500 -> 100. Hard-clamped to 200 by validator
+    # below to prevent accidental DB overload from large page requests.
     DEFAULT_PAGE_SIZE: int = 50
-    MAX_PAGE_SIZE: int = 500
+    MAX_PAGE_SIZE: int = 100
 
     # Correlation engine
     CORRELATION_ENABLED: bool = True
@@ -97,6 +100,21 @@ class Settings(BaseSettings):
             v = "postgresql+asyncpg://" + v[len("postgresql://"):]
         return v
 
+    @field_validator("MAX_PAGE_SIZE", mode="before")
+    @classmethod
+    def clamp_max_page_size(cls, v: int) -> int:
+        """Hard ceiling of 200 regardless of env var to protect the DB."""
+        _HARD_CEILING = 200
+        v = int(v)
+        if v > _HARD_CEILING:
+            _log.warning(
+                "MAX_PAGE_SIZE=%d exceeds hard ceiling %d — clamping.",
+                v,
+                _HARD_CEILING,
+            )
+            return _HARD_CEILING
+        return v
+
     @model_validator(mode="after")
     def enforce_production_secrets(self) -> "Settings":
         errors = []
@@ -107,8 +125,7 @@ class Settings(BaseSettings):
             )
         if self.DEBUG:
             if errors:
-                import logging as _log
-                _log.getLogger(__name__).warning(
+                _log.warning(
                     "SiemLess running in DEBUG mode with missing/weak configuration: %s",
                     "; ".join(errors),
                 )
