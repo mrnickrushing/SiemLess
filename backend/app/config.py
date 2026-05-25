@@ -41,11 +41,11 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "changeme-super-secret-key-for-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
 
     # Admin credentials
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "changeme"
+    ADMIN_PASSWORD: Optional[str] = None  # must be set via env var
 
     # CORS — comma-separated list of allowed origins, or * for dev
     CORS_ORIGINS: str = "*"
@@ -99,15 +99,26 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def enforce_production_secrets(self) -> "Settings":
-        if self.DEBUG:
-            return self
         errors = []
+        if self.ADMIN_PASSWORD is None:
+            errors.append(
+                "ADMIN_PASSWORD is not set. "
+                "Set it via the ADMIN_PASSWORD environment variable."
+            )
+        if self.DEBUG:
+            if errors:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "SiemLess running in DEBUG mode with missing/weak configuration: %s",
+                    "; ".join(errors),
+                )
+            return self
         if self.SECRET_KEY.lower() in _DEFAULT_SECRET_KEYS:
             errors.append(
                 "SECRET_KEY is set to a known default. "
                 "Generate one with: openssl rand -hex 32"
             )
-        if self.ADMIN_PASSWORD.lower() in _DEFAULT_PASSWORDS:
+        if self.ADMIN_PASSWORD is not None and self.ADMIN_PASSWORD.lower() in _DEFAULT_PASSWORDS:
             errors.append(
                 "ADMIN_PASSWORD is set to a known default. "
                 "Set a strong password via the ADMIN_PASSWORD environment variable."

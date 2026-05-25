@@ -10,8 +10,10 @@ import {
   Crosshair,
   Wifi,
   WifiOff,
+  LogOut,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
+import { logout } from '../../api/auth';
 
 interface NavItem {
   to: string;
@@ -116,6 +118,17 @@ const Sidebar: React.FC = () => {
         <div className="mt-2 text-[10px] font-mono text-cyber-muted/60">
           API: /api/v1
         </div>
+      </div>
+
+      {/* Logout */}
+      <div className="px-3 pb-4">
+        <button
+          onClick={() => logout()}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-cyber-muted hover:text-cyber-danger hover:bg-cyber-danger/10 transition-all duration-150"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign out
+        </button>
       </div>
     </aside>
   );
