@@ -315,3 +315,34 @@ async def bulk_import(
     await db.commit()
 
     return {"imported": imported, "total": len(indicators), "skipped": len(indicators) - imported}
+
+
+# ---------------------------------------------------------------------------
+# Short-path aliases used by the frontend UI
+# These must come after all fixed-path routes (/stats, /check, /indicators/*)
+# to avoid FastAPI matching them as indicator IDs.
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "",
+    response_model=IndicatorRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a threat indicator (short-path alias)",
+)
+async def create_indicator_alias(
+    indicator_data: IndicatorCreate,
+    db: AsyncSession = Depends(get_db),
+) -> ThreatIndicator:
+    return await create_indicator(indicator_data, db)
+
+
+@router.delete(
+    "/{indicator_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a threat indicator (short-path alias)",
+)
+async def delete_indicator_alias(
+    indicator_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    return await delete_indicator(indicator_id, db)

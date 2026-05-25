@@ -150,6 +150,22 @@ async def stream_events(request: Request) -> StreamingResponse:
     )
 
 
+@router.get("/categories", summary="Distinct event categories")
+async def get_categories(db: AsyncSession = Depends(get_db)) -> list[str]:
+    result = await db.execute(
+        select(SecurityEvent.category).distinct().where(SecurityEvent.category.isnot(None)).order_by(SecurityEvent.category)
+    )
+    return [row[0] for row in result.all()]
+
+
+@router.get("/log-types", summary="Distinct log types")
+async def get_log_types(db: AsyncSession = Depends(get_db)) -> list[str]:
+    result = await db.execute(
+        select(SecurityEvent.log_type).distinct().where(SecurityEvent.log_type.isnot(None)).order_by(SecurityEvent.log_type)
+    )
+    return [row[0] for row in result.all()]
+
+
 @router.get(
     "/{event_id}",
     response_model=SecurityEventRead,
