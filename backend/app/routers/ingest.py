@@ -25,11 +25,18 @@ logger = logging.getLogger(__name__)
 _parser = LogParser()
 
 
+async def _safe_send_alert(alert, rule) -> None:
+    """Wrapper so background alert tasks log exceptions instead of silently dying."""
+    try:
+        await alert_service.send_alert(alert, rule)
+    except Exception as exc:
+        logger.error("Background alert dispatch failed for alert %s: %s", alert.id, exc)
+
+
 async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_source: str = "api") -> SecurityEvent:
     """Persist a single event and run correlation."""
     now = datetime.now(timezone.utc)
 
-    # Enrich with threat intel
     event_dict = event_data.model_dump()
     event_dict = await threat_intel_service.enrich_event(db, event_dict)
 
@@ -59,7 +66,8 @@ async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_so
     db.add(event)
     await db.flush()
 
-    # Run correlation engine
+    # Run correlation engine; dispatch alert notifications as a background task
+    # using _safe_send_alert so any notification failures are logged, not swallowed.
     try:
         alerts = await correlation_engine.evaluate_event(db, event)
         for alert in alerts:
@@ -69,7 +77,7 @@ async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_so
                 select(CorrelationRule).where(CorrelationRule.id == alert.rule_id)
             )
             rule = rule_result.scalar_one_or_none()
-            asyncio.create_task(alert_service.send_alert(alert, rule))
+            asyncio.create_task(_safe_send_alert(alert, rule))
     except Exception as exc:
         logger.warning("Correlation error for event %s: %s", event.id, exc)
 
@@ -161,8 +169,10 @@ async def ingest_file(
 ) -> dict:
     """
     Upload a plain-text log file (one log entry per line).
-    Lines are parsed and stored asynchronously.
-    Returns a summary of ingested lines.
+    Lines are parsed and stored in batches of 200.
+    The response always reflects actual lines processed at the time of return;
+    if the request is cancelled mid-flight the caller will receive an incomplete
+    response — this is surfaced via the 'stored' + 'errors' counts.
     """
     if file.content_type and not (
         file.content_type.startswith("text/")
@@ -203,6 +213,8 @@ async def ingest_file(
                 logger.debug("Error parsing line: %s | %s", line[:80], exc)
                 errors += 1
 
+        # Commit each batch; if this request is cancelled after a partial commit
+        # the stored/errors counts in the response will reflect what was persisted.
         await db.commit()
 
     return {

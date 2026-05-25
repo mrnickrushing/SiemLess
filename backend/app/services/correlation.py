@@ -104,22 +104,31 @@ class CorrelationEngine:
 
         now = event.timestamp.timestamp() if event.timestamp else datetime.now(timezone.utc).timestamp()
 
+        # FIX: perform counter add, threshold check, AND reset atomically under
+        # a single lock acquisition to prevent duplicate alerts from concurrent
+        # coroutines reading count > threshold before either resets the counter.
+        threshold_met = False
+        event_ids: list[str] = []
+        count = 0
+
         async with self._lock:
             if window_key not in self._counters:
                 self._counters[window_key] = WindowCounter(rule.time_window)
             counter = self._counters[window_key]
+            # Safe to mutate window_seconds here — we hold the lock, so the
+            # cleanup task (which also acquires self._lock) cannot be mid-purge.
             counter.window_seconds = rule.time_window
             counter.add(str(event.id), now)
             count = counter.count(now)
-            event_ids = counter.event_ids()
-
-        if count < rule.threshold:
-            return None
-
-        # Threshold met – clear counter to avoid duplicate alerts in same window
-        async with self._lock:
-            if window_key in self._counters:
+            if count >= rule.threshold:
+                threshold_met = True
+                event_ids = counter.event_ids()
+                # Reset immediately so the next window starts fresh and we
+                # don't fire a duplicate alert before the window expires.
                 self._counters[window_key] = WindowCounter(rule.time_window)
+
+        if not threshold_met:
+            return None
 
         alert = await self._create_alert(db, rule, event, count, event_ids, str(group_value))
         return alert
