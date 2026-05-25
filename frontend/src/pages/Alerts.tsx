@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
@@ -39,13 +39,16 @@ const AlertDetailPanel: React.FC<{ alertId: string; onClose: () => void }> = ({
     queryKey: ['alert', alertId],
     queryFn: () => getAlert(alertId),
     enabled: !!alertId,
-    onSuccess: (data: Alert) => {
-      setEditStatus(data.status);
-      setAssignTo(data.assigned_to || '');
-      setNotes(data.notes || '');
-      setFpReason(data.false_positive_reason || '');
-    },
-  } as Parameters<typeof useQuery>[0]);
+  });
+
+  useEffect(() => {
+    if (alert) {
+      setEditStatus(alert.status);
+      setAssignTo(alert.assigned_to || '');
+      setNotes(alert.notes || '');
+      setFpReason(alert.false_positive_reason || '');
+    }
+  }, [alert]);
 
   const mutation = useMutation({
     mutationFn: (data: AlertUpdateData) => updateAlert(alertId, data),

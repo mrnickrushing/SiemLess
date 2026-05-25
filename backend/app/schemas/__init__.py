@@ -16,6 +16,14 @@ from app.schemas.rule import (
     CorrelationRuleUpdate,
     CorrelationRuleList,
 )
+from app.schemas.threat_intel import (
+    ThreatIndicatorCreate,
+    ThreatIndicatorRead,
+    ThreatIndicatorUpdate,
+    ThreatIndicatorList,
+    ThreatCheckRequest,
+    ThreatCheckResponse,
+)
 
 __all__ = [
     "SecurityEventCreate",
@@ -30,4 +38,10 @@ __all__ = [
     "CorrelationRuleRead",
     "CorrelationRuleUpdate",
     "CorrelationRuleList",
+    "ThreatIndicatorCreate",
+    "ThreatIndicatorRead",
+    "ThreatIndicatorUpdate",
+    "ThreatIndicatorList",
+    "ThreatCheckRequest",
+    "ThreatCheckResponse",
 ]
