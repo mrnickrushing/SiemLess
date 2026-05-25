@@ -1,0 +1,124 @@
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  Shield,
+  LayoutDashboard,
+  Activity,
+  Bell,
+  BookOpen,
+  Search,
+  Crosshair,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
+import { checkBackendHealth } from '../../api/stats';
+
+interface NavItem {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+}
+
+const navItems: NavItem[] = [
+  { to: '/', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+  { to: '/events', icon: <Activity className="w-5 h-5" />, label: 'Events' },
+  { to: '/alerts', icon: <Bell className="w-5 h-5" />, label: 'Alerts' },
+  { to: '/rules', icon: <BookOpen className="w-5 h-5" />, label: 'Rules' },
+  { to: '/search', icon: <Search className="w-5 h-5" />, label: 'Search' },
+  { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intel' },
+];
+
+const Sidebar: React.FC = () => {
+  const location = useLocation();
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      const online = await checkBackendHealth();
+      setBackendOnline(online);
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <aside className="w-64 min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
+      {/* Logo / Branding */}
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-cyber-border">
+        <div className="w-9 h-9 rounded-lg bg-cyber-accent/10 border border-cyber-accent/30 flex items-center justify-center">
+          <Shield className="w-5 h-5 text-cyber-accent" />
+        </div>
+        <div>
+          <span className="text-lg font-bold text-cyber-text tracking-tight">SiemLess</span>
+          <div className="text-[10px] font-mono text-cyber-muted tracking-widest uppercase">
+            Security Platform
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {navItems.map((item) => {
+          const isActive =
+            item.to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(item.to);
+
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150 group ${
+                isActive
+                  ? 'bg-cyber-accent/10 text-cyber-accent border border-cyber-accent/20'
+                  : 'text-cyber-muted hover:text-cyber-text hover:bg-cyber-border/40'
+              }`}
+            >
+              <span
+                className={`transition-colors ${
+                  isActive ? 'text-cyber-accent' : 'text-cyber-muted group-hover:text-cyber-text'
+                }`}
+              >
+                {item.icon}
+              </span>
+              {item.label}
+              {isActive && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-cyber-accent" />
+              )}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      {/* Backend Status */}
+      <div className="px-5 py-4 border-t border-cyber-border">
+        <div className="flex items-center gap-2.5">
+          {backendOnline === null ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-cyber-muted animate-pulse" />
+              <span className="text-xs text-cyber-muted">Checking connection...</span>
+            </>
+          ) : backendOnline ? (
+            <>
+              <Wifi className="w-3.5 h-3.5 text-cyber-accent" />
+              <span className="text-xs text-cyber-accent">Backend connected</span>
+              <div className="ml-auto w-2 h-2 rounded-full bg-cyber-accent animate-pulse-slow" />
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-3.5 h-3.5 text-cyber-danger" />
+              <span className="text-xs text-cyber-danger">Backend offline</span>
+              <div className="ml-auto w-2 h-2 rounded-full bg-cyber-danger" />
+            </>
+          )}
+        </div>
+        <div className="mt-2 text-[10px] font-mono text-cyber-muted/60">
+          API: /api/v1
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+export default Sidebar;
