@@ -83,6 +83,14 @@ async def _wait_for_db(max_attempts: int = 15, initial_delay: float = 2.0) -> No
             delay = min(delay * 2, 30)
 
 
+def _alembic_cmd(alembic_ini: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", alembic_ini, *args],
+        capture_output=True,
+        text=True,
+    )
+
+
 def _run_alembic_upgrade() -> None:
     """
     Run `alembic upgrade head` in a subprocess.
@@ -90,17 +98,44 @@ def _run_alembic_upgrade() -> None:
     We use a subprocess rather than calling Alembic's Python API directly
     because Alembic's async support requires the event loop to not already
     be running (which it is inside FastAPI's lifespan).
+
+    If the upgrade fails because tables already exist (the database was
+    previously bootstrapped via create_all or a now-lost migration record),
+    we stamp the current state as head and retry — the retry is then a no-op.
     """
-    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-    alembic_ini = os.path.abspath(alembic_ini)
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", alembic_ini, "upgrade", "head"],
-        capture_output=True,
-        text=True,
+    alembic_ini = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
     )
+
+    result = _alembic_cmd(alembic_ini, "upgrade", "head")
+
     if result.returncode != 0:
-        logger.error("Alembic upgrade failed:\n%s", result.stderr)
-        raise RuntimeError(f"Alembic upgrade head failed: {result.stderr.strip()[:200]}")
+        stderr = result.stderr or ""
+        # Tables exist but alembic_version has no record — stamp then retry.
+        if "DuplicateTable" in stderr or "already exists" in stderr:
+            logger.warning(
+                "Tables already exist but are not stamped in alembic_version. "
+                "Stamping head and retrying upgrade."
+            )
+            stamp = _alembic_cmd(alembic_ini, "stamp", "head")
+            if stamp.returncode != 0:
+                logger.error("Alembic stamp failed:\n%s", stamp.stderr)
+                raise RuntimeError(
+                    f"Alembic stamp head failed: {stamp.stderr.strip()[:200]}"
+                )
+            # Retry — should be a no-op now that the version is recorded.
+            result = _alembic_cmd(alembic_ini, "upgrade", "head")
+            if result.returncode != 0:
+                logger.error("Alembic upgrade failed after stamp:\n%s", result.stderr)
+                raise RuntimeError(
+                    f"Alembic upgrade head failed: {result.stderr.strip()[:200]}"
+                )
+        else:
+            logger.error("Alembic upgrade failed:\n%s", stderr)
+            raise RuntimeError(
+                f"Alembic upgrade head failed: {stderr.strip()[:200]}"
+            )
+
     if result.stdout:
         logger.info("Alembic: %s", result.stdout.strip())
 
