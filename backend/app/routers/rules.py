@@ -153,6 +153,25 @@ async def delete_rule(
     await correlation_engine.load_rules(db)
 
 
+@router.patch("/{rule_id}/toggle", response_model=CorrelationRuleRead, summary="Enable or disable a rule")
+async def toggle_rule(
+    rule_id: UUID,
+    body: CorrelationRuleUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> CorrelationRule:
+    result = await db.execute(select(CorrelationRule).where(CorrelationRule.id == rule_id))
+    rule = result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
+    if body.enabled is not None:
+        rule.enabled = body.enabled
+        rule.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(rule)
+    await correlation_engine.load_rules(db)
+    return rule
+
+
 @router.post(
     "/{rule_id}/test",
     summary="Test a rule against recent events",
