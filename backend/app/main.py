@@ -13,11 +13,13 @@ All routers are mounted under /api/v1.
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
@@ -244,15 +246,26 @@ app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
 
 
 # ---------------------------------------------------------------------------
-# Root redirect
+# Frontend static files (served when built into the Docker image)
 # ---------------------------------------------------------------------------
 
-@app.get("/", include_in_schema=False)
-async def root() -> dict:
-    return {
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+
+if _STATIC_DIR.exists():
+    _assets = _STATIC_DIR / "assets"
+    if _assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str) -> Response:
+    index = _STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    return JSONResponse({
         "name": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "docs": "/docs",
         "health": "/health",
         "api": API_PREFIX,
-    }
+    })
