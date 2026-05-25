@@ -2,13 +2,13 @@
 SiemLess SIEM – FastAPI application entry point.
 
 Startup sequence:
-1. Create DB tables (idempotent via create_all)
+1. Init DB (Alembic upgrade head in prod, create_all in DEBUG)
 2. Seed default correlation rules
 3. Load rules into correlation engine
 4. Start syslog UDP/TCP server (background)
 5. Start correlation engine maintenance task
 
-All routers are mounted under /api/v1.
+All protected routers are mounted under /api/v1 with JWT auth dependency.
 """
 import logging
 import time
@@ -26,34 +26,25 @@ from app.database import AsyncSessionLocal, init_db
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Logging configuration
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 
-# Suppress noisy SQLAlchemy echo logs unless DEBUG
 if not settings.DEBUG:
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
-# ---------------------------------------------------------------------------
-# Lifespan
-# ---------------------------------------------------------------------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application startup and shutdown lifecycle."""
-    # ---- STARTUP ----
     logger.info("Starting SiemLess SIEM v%s", settings.APP_VERSION)
 
-    # 1. Initialize DB tables
+    # 1. Init DB (Alembic in prod, create_all in DEBUG)
     try:
         await init_db()
-        logger.info("Database tables initialised")
+        logger.info("Database ready")
     except Exception as exc:
         logger.error("Failed to initialise database: %s", exc)
         raise
@@ -75,7 +66,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.warning("Correlation engine rule loading failed (non-fatal): %s", exc)
 
-    # 4. Start syslog server
+    # 4. Probe Redis (non-fatal)
+    try:
+        from app.services.redis_client import redis_client
+        ok = await redis_client.ping()
+        if ok:
+            logger.info("Redis connected")
+        else:
+            logger.warning("Redis not available — pub/sub features disabled")
+    except Exception as exc:
+        logger.warning("Redis probe failed (non-fatal): %s", exc)
+
+    # 5. Start syslog server
     if settings.SYSLOG_ENABLED:
         try:
             from app.services.syslog_server import syslog_server
@@ -86,7 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Syslog server failed to start (non-fatal): %s", exc)
 
-    # 5. Start correlation engine cleanup task
+    # 6. Start correlation engine cleanup task
     try:
         from app.services.correlation import correlation_engine
         await correlation_engine.start_cleanup_task(
@@ -96,11 +98,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning("Correlation cleanup task start failed (non-fatal): %s", exc)
 
     logger.info("SiemLess startup complete")
-
     yield
 
     # ---- SHUTDOWN ----
     logger.info("Shutting down SiemLess…")
+
+    try:
+        from app.services.redis_client import redis_client
+        await redis_client.close()
+    except Exception as exc:
+        logger.warning("Error closing Redis client: %s", exc)
 
     try:
         from app.services.syslog_server import syslog_server
@@ -129,10 +136,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("SiemLess shutdown complete")
 
 
-# ---------------------------------------------------------------------------
-# FastAPI application
-# ---------------------------------------------------------------------------
-
 app = FastAPI(
     title="SiemLess SIEM API",
     description=(
@@ -147,10 +150,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ---------------------------------------------------------------------------
-# CORS
-# ---------------------------------------------------------------------------
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -159,10 +158,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------------------------
-# Request logging middleware
-# ---------------------------------------------------------------------------
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next) -> Response:
@@ -180,28 +175,27 @@ async def request_logging_middleware(request: Request, call_next) -> Response:
     return response
 
 
-# ---------------------------------------------------------------------------
-# Global exception handler
-# ---------------------------------------------------------------------------
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    logger.error(
+        "Unhandled exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "type": type(exc).__name__},
     )
 
 
-# ---------------------------------------------------------------------------
-# Health check — returns only status ok/degraded (no internal detail exposed)
-# ---------------------------------------------------------------------------
-
-@app.get("/health", tags=["health"], summary="Health check endpoint")
+@app.get("/health", tags=["health"], summary="Health check")
 async def health_check() -> dict:
-    """Returns minimal health status. Internal details are not exposed to unauthenticated callers."""
-    from app.database import engine
+    """Returns db_ok and redis_ok. No internal detail exposed to callers."""
     import sqlalchemy
+    from app.database import engine
+    from app.services.redis_client import redis_client
 
     db_ok = True
     try:
@@ -210,19 +204,18 @@ async def health_check() -> dict:
     except Exception:
         db_ok = False
 
+    redis_ok = await redis_client.ping()
+
     return {
         "status": "ok" if db_ok else "degraded",
+        "db": db_ok,
+        "redis": redis_ok,
     }
 
-
-# ---------------------------------------------------------------------------
-# Mount routers
-# ---------------------------------------------------------------------------
 
 API_PREFIX = "/api/v1"
 
 from fastapi import Depends  # noqa: E402
-
 from app.deps import get_current_user  # noqa: E402
 from app.routers import alerts, auth, events, ingest, rules, search, stats, threat_intel  # noqa: E402
 
@@ -238,10 +231,6 @@ app.include_router(threat_intel.router, prefix=API_PREFIX, dependencies=_auth)
 app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
 
 
-# ---------------------------------------------------------------------------
-# Frontend static files (served when built into the Docker image)
-# ---------------------------------------------------------------------------
-
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
@@ -256,20 +245,17 @@ async def serve_spa(full_path: str) -> Response:
             "api": API_PREFIX,
         })
 
-    # Serve the actual file if it exists (JS bundles, CSS, images, favicon…)
     candidate = (_STATIC_DIR / full_path).resolve()
     try:
-        candidate.relative_to(_STATIC_DIR.resolve())  # guard against path traversal
+        candidate.relative_to(_STATIC_DIR.resolve())
     except ValueError:
-        # Path traversal attempt detected — return 403 immediately
-        return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        return JSONResponse(status_code=400, content={"detail": "Invalid path"})
 
     if candidate.is_file():
-        return FileResponse(str(candidate))
+        return FileResponse(candidate)
 
-    # All other paths → index.html (SPA client-side routing)
     index = _STATIC_DIR / "index.html"
     if index.exists():
-        return FileResponse(str(index))
+        return FileResponse(index)
 
-    return JSONResponse({"detail": "Frontend not built"}, status_code=404)
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
