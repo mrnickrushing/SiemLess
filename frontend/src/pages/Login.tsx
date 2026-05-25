@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { login } from '../api/auth';
 
-export default function Login() {
+interface Props {
+  onSuccess?: (username: string) => void;
+}
+
+export default function Login({ onSuccess }: Props) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
@@ -16,7 +20,8 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
+      const user = await login(username, password);
+      onSuccess?.(user);
       navigate('/');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
