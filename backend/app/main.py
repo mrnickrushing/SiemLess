@@ -194,31 +194,24 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 # ---------------------------------------------------------------------------
-# Health check
+# Health check — returns only status ok/degraded (no internal detail exposed)
 # ---------------------------------------------------------------------------
 
 @app.get("/health", tags=["health"], summary="Health check endpoint")
 async def health_check() -> dict:
-    """Returns application health status."""
+    """Returns minimal health status. Internal details are not exposed to unauthenticated callers."""
     from app.database import engine
+    import sqlalchemy
 
-    db_status = "ok"
+    db_ok = True
     try:
         async with engine.connect() as conn:
-            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
-    except Exception as exc:
-        db_status = f"error: {exc}"
-
-    from app.services.correlation import correlation_engine
-    from app.services.syslog_server import syslog_server
+            await conn.execute(sqlalchemy.text("SELECT 1"))
+    except Exception:
+        db_ok = False
 
     return {
-        "status": "ok" if db_status == "ok" else "degraded",
-        "version": settings.APP_VERSION,
-        "database": db_status,
-        "syslog_server": "running" if syslog_server.is_running else "stopped",
-        "correlation_rules_loaded": len(correlation_engine._rules),
-        "syslog_enabled": settings.SYSLOG_ENABLED,
+        "status": "ok" if db_ok else "degraded",
     }
 
 
@@ -268,10 +261,11 @@ async def serve_spa(full_path: str) -> Response:
     try:
         candidate.relative_to(_STATIC_DIR.resolve())  # guard against path traversal
     except ValueError:
-        pass
-    else:
-        if candidate.is_file():
-            return FileResponse(str(candidate))
+        # Path traversal attempt detected — return 403 immediately
+        return JSONResponse({"detail": "Forbidden"}, status_code=403)
+
+    if candidate.is_file():
+        return FileResponse(str(candidate))
 
     # All other paths → index.html (SPA client-side routing)
     index = _STATIC_DIR / "index.html"

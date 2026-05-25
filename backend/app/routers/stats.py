@@ -1,6 +1,7 @@
 """
 Stats router: aggregated statistics and dashboard metrics.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -373,49 +374,40 @@ async def alert_trend(
 
 @router.get("/dashboard", summary="Aggregated dashboard statistics")
 async def get_dashboard(db: AsyncSession = Depends(get_db)) -> dict:
-    """Single endpoint that returns all data needed by the dashboard page."""
+    """Single endpoint returning all dashboard data. Independent scalar queries
+    run concurrently via asyncio.gather for improved latency."""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     one_hour_ago = now - timedelta(hours=1)
     since_24h = now - timedelta(hours=24)
 
-    # --- Overview ---
-    events_today = (await db.execute(
-        select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= today_start)
-    )).scalar() or 0
-
-    events_last_hour = (await db.execute(
-        select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= one_hour_ago)
-    )).scalar() or 0
-
-    open_alerts = (await db.execute(
-        select(func.count()).select_from(Alert).where(Alert.status == "open")
-    )).scalar() or 0
-
-    critical_alerts = (await db.execute(
-        select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "critical")
-    )).scalar() or 0
-
-    high_alerts = (await db.execute(
-        select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "high")
-    )).scalar() or 0
-
-    active_rules = (await db.execute(
-        select(func.count()).select_from(CorrelationRule).where(CorrelationRule.enabled.is_(True))
-    )).scalar() or 0
-
-    threats_detected = (await db.execute(
-        select(func.count()).select_from(ThreatIndicator)
-    )).scalar() or 0
+    # --- Parallel scalar queries via asyncio.gather ---
+    (
+        events_today,
+        events_last_hour,
+        open_alerts,
+        critical_alerts,
+        high_alerts,
+        active_rules,
+        threats_detected,
+    ) = await asyncio.gather(
+        db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= today_start)),
+        db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= one_hour_ago)),
+        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open")),
+        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "critical")),
+        db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "high")),
+        db.scalar(select(func.count()).select_from(CorrelationRule).where(CorrelationRule.enabled.is_(True))),
+        db.scalar(select(func.count()).select_from(ThreatIndicator)),
+    )
 
     overview = {
-        "total_events_today": events_today,
-        "events_last_hour": events_last_hour,
-        "open_alerts": open_alerts,
-        "critical_alerts": critical_alerts,
-        "high_alerts": high_alerts,
-        "active_rules": active_rules,
-        "threats_detected": threats_detected,
+        "total_events_today": events_today or 0,
+        "events_last_hour": events_last_hour or 0,
+        "open_alerts": open_alerts or 0,
+        "critical_alerts": critical_alerts or 0,
+        "high_alerts": high_alerts or 0,
+        "active_rules": active_rules or 0,
+        "threats_detected": threats_detected or 0,
     }
 
     # --- Events over time (24h, per-severity per hour) ---
