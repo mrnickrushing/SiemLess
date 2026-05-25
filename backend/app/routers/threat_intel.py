@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.threat_intel import ThreatIndicator
 from app.services.threat_intel import ThreatIntelService, _detect_indicator_type, threat_intel_service
@@ -116,7 +117,7 @@ async def list_indicators(
     tag: Optional[str] = Query(None),
     q: Optional[str] = Query(None, description="Search value substring"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
+    page_size: int = Query(50, ge=1, le=settings.MAX_PAGE_SIZE),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     query = select(ThreatIndicator)

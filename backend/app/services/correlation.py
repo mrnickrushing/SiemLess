@@ -6,7 +6,6 @@ import asyncio
 import logging
 import re
 import uuid
-from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -50,7 +49,9 @@ class CorrelationEngine:
         self._rules: list[CorrelationRule] = []
         self._rules_loaded_at: datetime | None = None
         # counters[(rule_id, group_key)] -> WindowCounter
-        self._counters: dict[tuple[str, str], WindowCounter] = defaultdict(lambda: WindowCounter(300))
+        # Plain dict — each counter is constructed explicitly with the rule's time_window.
+        # NOTE: assumes single-process deployment (asyncio.Lock provides safe concurrency).
+        self._counters: dict[tuple[str, str], WindowCounter] = {}
         self._lock = asyncio.Lock()
         self._cleanup_task: asyncio.Task | None = None
 

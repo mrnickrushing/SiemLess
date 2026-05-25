@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.event import SecurityEvent
 from app.schemas.event import SecurityEventList, SecurityEventRead
@@ -48,8 +49,12 @@ def _parse_query(q: str) -> tuple[list[tuple[str, str]], list[str], str]:
     - field_filters: list of (field, value) tuples for known fields
     - text_terms: list of free-text search terms
     - operator: "AND" or "OR"
+
+    Limitation: mixed operators (e.g. "A AND B OR C") are not supported.
+    If any OR token is present the entire query is treated as OR.
     """
-    # Detect top-level operator
+    # Detect top-level operator. OR takes precedence when mixed — callers
+    # should avoid combining AND and OR in a single query.
     operator = "AND"
     if _OR_RE.search(q):
         operator = "OR"
@@ -106,7 +111,7 @@ async def search_events(
     start_time: Optional[datetime] = Query(None),
     end_time: Optional[datetime] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=500),
+    page_size: int = Query(50, ge=1, le=settings.MAX_PAGE_SIZE),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """

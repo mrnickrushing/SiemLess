@@ -13,7 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import AsyncSessionLocal
+from sqlalchemy import select
+
 from app.models.event import SecurityEvent
+from app.models.rule import CorrelationRule
 from app.services.log_parser import LogParser
 
 logger = logging.getLogger(__name__)
@@ -88,7 +91,11 @@ async def _store_event(raw_log: str, source_ip: str) -> None:
                 from app.services.alerting import alert_service
                 alerts = await correlation_engine.evaluate_event(db, event)
                 for alert in alerts:
-                    await alert_service.send_alert(alert)
+                    rule_result = await db.execute(
+                        select(CorrelationRule).where(CorrelationRule.id == alert.rule_id)
+                    )
+                    rule = rule_result.scalar_one_or_none()
+                    await alert_service.send_alert(alert, rule)
             except Exception as exc:
                 logger.warning("Correlation/alerting error for syslog event: %s", exc)
 

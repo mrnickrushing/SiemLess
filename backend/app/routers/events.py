@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.event import SecurityEvent
 from app.schemas.event import SecurityEventList, SecurityEventRead
@@ -65,7 +66,7 @@ async def list_events(
     action: Optional[str] = Query(None, description="Filter by action"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
+    page_size: int = Query(50, ge=1, le=settings.MAX_PAGE_SIZE),
     db: AsyncSession = Depends(get_db),
 ) -> SecurityEventList:
     query = select(SecurityEvent)

@@ -7,7 +7,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

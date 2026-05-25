@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.alert import Alert
 from app.models.event import SecurityEvent
@@ -30,7 +31,7 @@ async def list_alerts(
     start_time: Optional[datetime] = Query(None),
     end_time: Optional[datetime] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
+    page_size: int = Query(50, ge=1, le=settings.MAX_PAGE_SIZE),
     db: AsyncSession = Depends(get_db),
 ) -> AlertList:
     query = select(Alert)
@@ -162,7 +163,7 @@ async def delete_alert(
 async def get_alert_events(
     alert_id: UUID,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
+    page_size: int = Query(50, ge=1, le=settings.MAX_PAGE_SIZE),
     db: AsyncSession = Depends(get_db),
 ) -> SecurityEventList:
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
