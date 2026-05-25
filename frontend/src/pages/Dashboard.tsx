@@ -151,7 +151,7 @@ const DashboardContent: React.FC<{ data: DashboardStats }> = ({ data }) => {
             </h2>
           </div>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a3148" />
                 <XAxis

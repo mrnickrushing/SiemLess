@@ -121,7 +121,7 @@ const RuleForm: React.FC<RuleFormProps> = ({ initial, onClose, onSaved }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-xs text-cyber-muted block mb-1">Name *</label>
               <input
@@ -204,7 +204,7 @@ const RuleForm: React.FC<RuleFormProps> = ({ initial, onClose, onSaved }) => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-cyber-muted block mb-1">MITRE Tactic</label>
               <input
