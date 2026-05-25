@@ -151,7 +151,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -226,15 +226,21 @@ async def health_check() -> dict:
 
 API_PREFIX = "/api/v1"
 
-from app.routers import events, alerts, rules, ingest, search, threat_intel, stats  # noqa: E402
+from fastapi import Depends  # noqa: E402
 
-app.include_router(events.router, prefix=API_PREFIX)
-app.include_router(alerts.router, prefix=API_PREFIX)
-app.include_router(rules.router, prefix=API_PREFIX)
-app.include_router(ingest.router, prefix=API_PREFIX)
-app.include_router(search.router, prefix=API_PREFIX)
-app.include_router(threat_intel.router, prefix=API_PREFIX)
-app.include_router(stats.router, prefix=API_PREFIX)
+from app.deps import get_current_user  # noqa: E402
+from app.routers import alerts, auth, events, ingest, rules, search, stats, threat_intel  # noqa: E402
+
+_auth = [Depends(get_current_user)]
+
+app.include_router(auth.router, prefix=API_PREFIX)
+app.include_router(events.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(alerts.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(rules.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(ingest.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(search.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(threat_intel.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
 
 
 # ---------------------------------------------------------------------------
