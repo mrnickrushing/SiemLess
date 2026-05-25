@@ -251,21 +251,31 @@ app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 
-if _STATIC_DIR.exists():
-    _assets = _STATIC_DIR / "assets"
-    if _assets.exists():
-        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
-
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_spa(full_path: str) -> Response:
+    if not _STATIC_DIR.exists():
+        return JSONResponse({
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "docs": "/docs",
+            "health": "/health",
+            "api": API_PREFIX,
+        })
+
+    # Serve the actual file if it exists (JS bundles, CSS, images, favicon…)
+    candidate = (_STATIC_DIR / full_path).resolve()
+    try:
+        candidate.relative_to(_STATIC_DIR.resolve())  # guard against path traversal
+    except ValueError:
+        pass
+    else:
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+
+    # All other paths → index.html (SPA client-side routing)
     index = _STATIC_DIR / "index.html"
     if index.exists():
         return FileResponse(str(index))
-    return JSONResponse({
-        "name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
-        "health": "/health",
-        "api": API_PREFIX,
-    })
+
+    return JSONResponse({"detail": "Frontend not built"}, status_code=404)
