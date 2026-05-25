@@ -193,9 +193,9 @@ class LogParser:
 
         message = gd.get("message", "")
         process = gd.get("process", "")
-        log_type, extra = self._classify_by_process_and_message(process, message)
+        log_type, top_fields, extra = self._classify_by_process_and_message(process, message)
 
-        result = {
+        result: dict = {
             "timestamp": timestamp,
             "hostname": gd.get("hostname"),
             "process": process,
@@ -208,6 +208,10 @@ class LogParser:
                 **extra,
             },
         }
+        # Merge top-level fields from specialised parser (source_ip, user, action, etc.)
+        for k, v in top_fields.items():
+            if v is not None:
+                result[k] = v
         return result
 
     def parse_syslog_rfc5424(self, raw_log: str) -> dict:
@@ -229,9 +233,9 @@ class LogParser:
 
         message = gd.get("message", "")
         appname = gd.get("appname", "-")
-        log_type, extra = self._classify_by_process_and_message(appname, message)
+        log_type, top_fields, extra = self._classify_by_process_and_message(appname, message)
 
-        return {
+        result: dict = {
             "timestamp": timestamp,
             "hostname": gd.get("hostname") if gd.get("hostname") != "-" else None,
             "process": appname if appname != "-" else None,
@@ -246,6 +250,11 @@ class LogParser:
                 **extra,
             },
         }
+        # Merge top-level fields from specialised parser
+        for k, v in top_fields.items():
+            if v is not None:
+                result[k] = v
+        return result
 
     def parse_cef(self, raw_log: str) -> dict:
         m = RE_CEF.match(raw_log.strip())
@@ -426,61 +435,86 @@ class LogParser:
         return result
 
     def parse_iptables_log(self, message: str) -> dict:
-        m = RE_IPTABLES.search(message)
         action = "deny"
-        if "ACCEPT" in message.upper():
+        msg_upper = message.upper()
+        if "ACCEPT" in msg_upper:
             action = "allow"
-        elif "DROP" in message.upper() or "REJECT" in message.upper():
+        elif "DROP" in msg_upper or "REJECT" in msg_upper or "BLOCK" in msg_upper:
             action = "deny"
 
-        if not m:
-            return {"log_type": "firewall", "category": "network", "action": action, "message": message}
+        # Extract key=value pairs (handles IN=, SRC=, DST=, etc.)
+        kv: dict[str, str] = {}
+        for k, v in re.findall(r'(\w+)=(\S+)', message):
+            kv[k.upper()] = v
 
-        gd = m.groupdict()
         try:
-            spt = int(gd["spt"]) if gd.get("spt") else None
+            spt = int(kv["SPT"]) if "SPT" in kv else None
         except (ValueError, TypeError):
             spt = None
         try:
-            dpt = int(gd["dpt"]) if gd.get("dpt") else None
+            dpt = int(kv["DPT"]) if "DPT" in kv else None
         except (ValueError, TypeError):
             dpt = None
 
         return {
             "log_type": "firewall",
             "category": "network",
-            "source_ip": gd.get("src_ip"),
-            "destination_ip": gd.get("dst_ip"),
+            "source_ip": kv.get("SRC"),
+            "destination_ip": kv.get("DST"),
             "source_port": spt,
             "destination_port": dpt,
             "action": action,
             "parsed_fields": {
-                "in_iface": gd.get("in_iface"),
-                "out_iface": gd.get("out_iface"),
-                "protocol": gd.get("proto"),
-                "mac": gd.get("mac"),
+                "in_iface": kv.get("IN"),
+                "out_iface": kv.get("OUT"),
+                "protocol": kv.get("PROTO"),
+                "mac": kv.get("MAC"),
+                "len": kv.get("LEN"),
+                "ttl": kv.get("TTL"),
             },
         }
 
     def parse_sudo_log(self, message: str) -> dict:
-        m = RE_SUDO.search(message)
-        if not m:
+        # Extract the invoking user from start of message (before the colon)
+        user = None
+        user_m = re.match(r"(\w+)\s*:", message)
+        if user_m:
+            user = user_m.group(1)
+
+        # Extract key=value pairs (TTY=, PWD=, USER=, COMMAND=)
+        kv: dict[str, str] = {}
+        for k, v in re.findall(r"(\w+)=((?:[^;]|(?!;))*?)(?:\s*;|\s*$)", message):
+            kv[k.upper()] = v.strip()
+
+        run_as = kv.get("USER") or ""
+        command = kv.get("COMMAND") or ""
+
+        # Fallback to original regex if kv extraction didn't work
+        if not run_as:
+            m = RE_SUDO.search(message)
+            if m:
+                gd = m.groupdict()
+                user = user or gd.get("user")
+                run_as = gd.get("run_as", "")
+                command = gd.get("command", "")
+
+        if not user and not run_as:
             return {"log_type": "sudo", "category": "system", "message": message}
 
-        gd = m.groupdict()
-        run_as = gd.get("run_as", "")
         severity = "high" if run_as == "root" else "medium"
 
         return {
             "log_type": "sudo",
             "category": "system",
-            "user": gd.get("user"),
+            "user": user,
             "severity": severity,
             "action": "success",
             "parsed_fields": {
                 "run_as": run_as,
-                "command": gd.get("command"),
+                "command": command,
                 "event": "privilege_escalation" if run_as == "root" else "sudo_command",
+                "tty": kv.get("TTY"),
+                "pwd": kv.get("PWD"),
             },
         }
 
@@ -633,33 +667,38 @@ class LogParser:
     # Private helpers
     # -----------------------------------------------------------------------
 
-    def _classify_by_process_and_message(self, process: str, message: str) -> tuple[str, dict]:
-        """Return (log_type, extra_parsed_fields) based on process name and message."""
+    def _classify_by_process_and_message(self, process: str, message: str) -> tuple[str, dict, dict]:
+        """Return (log_type, top_level_fields, extra_parsed_fields) based on process name and message."""
         proc_lower = (process or "").lower()
         msg_lower = (message or "").lower()
 
         if "sshd" in proc_lower:
             ssh_result = self.parse_ssh_log(message)
-            return "ssh", ssh_result.get("parsed_fields", {})
+            top = {k: v for k, v in ssh_result.items() if k in ("source_ip", "user", "action", "source_port", "severity")}
+            return "ssh", top, ssh_result.get("parsed_fields", {})
 
         if any(p in proc_lower for p in ("apache", "httpd", "nginx")):
             web_result = self.parse_apache_log(message)
             log_type = "nginx" if "nginx" in proc_lower else "apache"
-            return log_type, web_result.get("parsed_fields", {})
+            top = {k: v for k, v in web_result.items() if k in ("source_ip", "user", "action", "severity")}
+            return log_type, top, web_result.get("parsed_fields", {})
 
         if "sudo" in proc_lower:
             sudo_result = self.parse_sudo_log(message)
-            return "sudo", sudo_result.get("parsed_fields", {})
+            top = {k: v for k, v in sudo_result.items() if k in ("user", "action", "severity")}
+            return "sudo", top, sudo_result.get("parsed_fields", {})
 
         if "kernel" in proc_lower or "iptables" in msg_lower:
             ipt_result = self.parse_iptables_log(message)
-            return "firewall", ipt_result.get("parsed_fields", {})
+            top = {k: v for k, v in ipt_result.items() if k in ("source_ip", "destination_ip", "source_port", "destination_port", "action")}
+            return "firewall", top, ipt_result.get("parsed_fields", {})
 
         if "windows" in proc_lower or "security" in proc_lower:
             win_result = self.parse_windows_event(message)
-            return "windows", win_result.get("parsed_fields", {})
+            top = {k: v for k, v in win_result.items() if k in ("source_ip", "user", "action", "severity")}
+            return "windows", top, win_result.get("parsed_fields", {})
 
-        return "generic", {}
+        return "generic", {}, {}
 
     def _parse_cef_extension(self, ext_str: str) -> dict:
         result = {}
