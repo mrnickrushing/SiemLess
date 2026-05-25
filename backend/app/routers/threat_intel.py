@@ -68,6 +68,46 @@ class BulkImportRequest(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
+@router.get("/stats", summary="Threat indicator statistics")
+async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
+    """Returns counts by type, severity, and active/total totals."""
+    now = datetime.now(timezone.utc)
+
+    total = (await db.execute(select(func.count()).select_from(ThreatIndicator))).scalar() or 0
+
+    active = (await db.execute(
+        select(func.count()).select_from(ThreatIndicator).where(
+            (ThreatIndicator.expiry.is_(None)) | (ThreatIndicator.expiry > now)
+        )
+    )).scalar() or 0
+
+    by_type_rows = (await db.execute(
+        select(ThreatIndicator.indicator_type, func.count().label("cnt"))
+        .group_by(ThreatIndicator.indicator_type)
+    )).all()
+    by_type = {row.indicator_type: row.cnt for row in by_type_rows}
+
+    by_severity_rows = (await db.execute(
+        select(ThreatIndicator.severity, func.count().label("cnt"))
+        .group_by(ThreatIndicator.severity)
+    )).all()
+    by_severity = {row.severity: row.cnt for row in by_severity_rows}
+
+    return {"total": total, "active": active, "by_type": by_type, "by_severity": by_severity}
+
+
+@router.get("/check", summary="Check if a value is a known threat indicator")
+async def check_indicator_get(
+    value: str = Query(..., description="IP, domain, hash, or URL to check"),
+    indicator_type: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """GET convenience wrapper for the threat check used by the UI quick-check."""
+    result = await threat_intel_service.check_indicator(db, value.strip(), indicator_type)
+    await db.commit()
+    return result
+
+
 @router.get("", response_model=dict, summary="List threat indicators")
 async def list_indicators(
     indicator_type: Optional[str] = Query(None),
