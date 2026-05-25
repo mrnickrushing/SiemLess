@@ -16,13 +16,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
+from app.deps import get_current_user
+from app.routers import alerts, auth, events, ingest, rules, search, stats, threat_intel
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +195,6 @@ async def health_check() -> dict:
 
 
 API_PREFIX = "/api/v1"
-
-from fastapi import Depends  # noqa: E402
-from app.deps import get_current_user  # noqa: E402
-from app.routers import alerts, auth, events, ingest, rules, search, stats, threat_intel  # noqa: E402
 
 _auth = [Depends(get_current_user)]
 

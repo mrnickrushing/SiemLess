@@ -51,7 +51,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
@@ -166,5 +165,6 @@ async def init_db() -> None:
         return
 
     logger.info("Running Alembic migrations (upgrade head)…")
-    await asyncio.get_event_loop().run_in_executor(None, _run_alembic_upgrade)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _run_alembic_upgrade)
     logger.info("Alembic migrations complete")

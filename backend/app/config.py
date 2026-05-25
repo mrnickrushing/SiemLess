@@ -153,6 +153,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         if self.CORS_ORIGINS.strip() == "*":
+            if not self.DEBUG:
+                _log.warning(
+                    "CORS_ORIGINS is set to '*' in production. "
+                    "Set CORS_ORIGINS to your frontend origin(s) to restrict cross-origin access."
+                )
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
