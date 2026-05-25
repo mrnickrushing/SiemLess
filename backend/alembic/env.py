@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base
-from app.models import event, alert, rule, threat_intel  # noqa: F401
+from app.models import event, alert, rule, threat_intel, saved_search, watchlist  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config

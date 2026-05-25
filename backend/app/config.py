@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     CORRELATION_ENABLED: bool = True
     CORRELATION_WINDOW_CLEANUP_INTERVAL: int = 60
 
+    # SLA tracking (minutes until breach; 0 = disabled for that severity)
+    SLA_CRITICAL_MINUTES: int = 15
+    SLA_HIGH_MINUTES: int = 60
+    SLA_CHECK_INTERVAL: int = 300  # seconds between SLA checks
+
+    # Retention (days; 0 = disabled)
+    EVENT_RETENTION_DAYS: int = 90
+    RETENTION_CHECK_INTERVAL: int = 86400  # seconds between purge runs (1 day)
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def normalise_db_url(cls, v: str) -> str:

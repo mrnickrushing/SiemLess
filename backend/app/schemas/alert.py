@@ -30,6 +30,7 @@ class AlertUpdate(BaseModel):
     mitre_tactic: Optional[str] = None
     mitre_technique: Optional[str] = None
     resolved_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
 
 
 class AlertRead(BaseModel):
@@ -50,6 +51,8 @@ class AlertRead(BaseModel):
     notes: Optional[str] = None
     resolved_at: Optional[datetime] = None
     assigned_to: Optional[str] = None
+    escalated_at: Optional[datetime] = None
+    sla_breach_at: Optional[datetime] = None
 
 
 class AlertList(BaseModel):

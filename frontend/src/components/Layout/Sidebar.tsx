@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Shield,
@@ -12,23 +12,27 @@ import {
   WifiOff,
   LogOut,
   X,
+  Target,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
+import { getAlerts } from '../../api/alerts';
 import { logout } from '../../api/auth';
 
 interface NavItem {
   to: string;
   icon: React.ReactNode;
   label: string;
+  badge?: number;
 }
 
-const navItems: NavItem[] = [
+const BASE_NAV: Omit<NavItem, 'badge'>[] = [
   { to: '/', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
   { to: '/events', icon: <Activity className="w-5 h-5" />, label: 'Events' },
   { to: '/alerts', icon: <Bell className="w-5 h-5" />, label: 'Alerts' },
   { to: '/rules', icon: <BookOpen className="w-5 h-5" />, label: 'Rules' },
   { to: '/search', icon: <Search className="w-5 h-5" />, label: 'Search' },
   { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intel' },
+  { to: '/mitre', icon: <Target className="w-5 h-5" />, label: 'MITRE ATT&CK' },
 ];
 
 interface SidebarProps {
@@ -38,7 +42,10 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const location = useLocation();
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+  const [openAlertCount, setOpenAlertCount] = useState(0);
+  const sseRef = useRef<EventSource | null>(null);
 
+  // Health check
   useEffect(() => {
     const check = async () => {
       const online = await checkBackendHealth();
@@ -48,6 +55,38 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Poll open alert count; bump on SSE events
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const data = await getAlerts({ status: 'open', page: 1, page_size: 1 });
+        setOpenAlertCount(data.total);
+      } catch {
+        // non-fatal
+      }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30_000);
+
+    // Listen on SSE stream to detect new events and refetch
+    try {
+      const es = new EventSource('/api/v1/events/stream');
+      es.onmessage = () => fetchCount();
+      sseRef.current = es;
+    } catch {
+      // SSE not available
+    }
+
+    return () => {
+      clearInterval(interval);
+      sseRef.current?.close();
+    };
+  }, []);
+
+  const navItems: NavItem[] = BASE_NAV.map((item) =>
+    item.to === '/alerts' ? { ...item, badge: openAlertCount || undefined } : item
+  );
 
   return (
     <aside className="w-64 h-full min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
@@ -93,7 +132,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
               <span className={`transition-colors ${isActive ? 'text-cyber-accent' : 'text-cyber-muted group-hover:text-cyber-text'}`}>
                 {item.icon}
               </span>
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge != null && item.badge > 0 && (
+                <span className="min-w-[20px] h-5 px-1 rounded-full bg-cyber-danger text-white text-[10px] font-bold flex items-center justify-center">
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
             </NavLink>
           );
         })}

@@ -47,6 +47,27 @@ export interface Alert {
   notes: string | null;
   false_positive_reason: string | null;
   event_count: number;
+  escalated_at: string | null;
+  sla_breach_at: string | null;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  description: string | null;
+  query: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistEntry {
+  id: string;
+  entry_type: 'ip' | 'user' | 'hash' | 'domain';
+  value: string;
+  label: string | null;
+  tags: string[] | null;
+  notes: string | null;
+  created_at: string;
 }
 
 export interface CorrelationRule {

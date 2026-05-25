@@ -10,6 +10,7 @@ Startup sequence:
 
 All protected routers are mounted under /api/v1 with JWT auth dependency.
 """
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -24,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
 from app.deps import get_current_user
-from app.routers import alerts, auth, events, ingest, rules, search, stats, threat_intel
+from app.routers import alerts, auth, events, ingest, rules, saved_searches, search, stats, threat_intel, watchlists
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
     except Exception as exc:
         logger.warning("Correlation cleanup task start failed (non-fatal): %s", exc)
+
+    # 6. Start SLA breach checker
+    if settings.SLA_CRITICAL_MINUTES > 0 or settings.SLA_HIGH_MINUTES > 0:
+        try:
+            asyncio.create_task(
+                _sla_check_loop(settings.SLA_CHECK_INTERVAL),
+                name="sla-checker",
+            )
+            logger.info("SLA breach checker started (interval=%ds)", settings.SLA_CHECK_INTERVAL)
+        except Exception as exc:
+            logger.warning("SLA checker start failed (non-fatal): %s", exc)
+
+    # 7. Start event retention purge task
+    if settings.EVENT_RETENTION_DAYS > 0:
+        try:
+            asyncio.create_task(
+                _retention_purge_loop(settings.RETENTION_CHECK_INTERVAL),
+                name="retention-purger",
+            )
+            logger.info(
+                "Retention purge task started (retention=%dd, interval=%ds)",
+                settings.EVENT_RETENTION_DAYS,
+                settings.RETENTION_CHECK_INTERVAL,
+            )
+        except Exception as exc:
+            logger.warning("Retention purge task start failed (non-fatal): %s", exc)
 
     logger.info("SiemLess startup complete")
     yield
@@ -194,6 +221,69 @@ async def health_check() -> dict:
     }
 
 
+async def _sla_check_loop(interval: int) -> None:
+    """Periodically mark open alerts that have breached their SLA."""
+    import asyncio as _asyncio
+    from datetime import timedelta
+    from app.models.alert import Alert
+    from sqlalchemy import select, update
+
+    while True:
+        await _asyncio.sleep(interval)
+        try:
+            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            async with AsyncSessionLocal() as db:
+                sla_map = {}
+                if settings.SLA_CRITICAL_MINUTES > 0:
+                    sla_map["critical"] = timedelta(minutes=settings.SLA_CRITICAL_MINUTES)
+                if settings.SLA_HIGH_MINUTES > 0:
+                    sla_map["high"] = timedelta(minutes=settings.SLA_HIGH_MINUTES)
+
+                for severity, delta in sla_map.items():
+                    breach_time = now - delta
+                    await db.execute(
+                        update(Alert)
+                        .where(
+                            Alert.severity == severity,
+                            Alert.status.in_(["open", "investigating"]),
+                            Alert.sla_breach_at.is_(None),
+                            Alert.created_at <= breach_time,
+                        )
+                        .values(sla_breach_at=now)
+                    )
+                await db.commit()
+        except Exception as exc:
+            logger.warning("SLA check error: %s", exc)
+
+
+async def _retention_purge_loop(interval: int) -> None:
+    """Periodically delete security events older than EVENT_RETENTION_DAYS."""
+    import asyncio as _asyncio
+    from datetime import timedelta
+    from sqlalchemy import delete
+    from app.models.event import SecurityEvent
+
+    while True:
+        await _asyncio.sleep(interval)
+        if settings.EVENT_RETENTION_DAYS <= 0:
+            continue
+        try:
+            cutoff = (
+                __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                - timedelta(days=settings.EVENT_RETENTION_DAYS)
+            )
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    delete(SecurityEvent).where(SecurityEvent.timestamp < cutoff)
+                )
+                deleted = result.rowcount
+                await db.commit()
+            if deleted:
+                logger.info("Retention purge: deleted %d events older than %d days", deleted, settings.EVENT_RETENTION_DAYS)
+        except Exception as exc:
+            logger.warning("Retention purge error: %s", exc)
+
+
 API_PREFIX = "/api/v1"
 
 _auth = [Depends(get_current_user)]
@@ -206,6 +296,8 @@ app.include_router(ingest.router, prefix=API_PREFIX, dependencies=_auth)
 app.include_router(search.router, prefix=API_PREFIX, dependencies=_auth)
 app.include_router(threat_intel.router, prefix=API_PREFIX, dependencies=_auth)
 app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(saved_searches.router, prefix=API_PREFIX, dependencies=_auth)
+app.include_router(watchlists.router, prefix=API_PREFIX, dependencies=_auth)
 
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
