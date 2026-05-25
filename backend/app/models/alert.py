@@ -56,5 +56,13 @@ class Alert(Base):
     )
     assigned_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # SLA tracking
+    escalated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sla_breach_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     def __repr__(self) -> str:
         return f"<Alert id={self.id} title={self.title!r} severity={self.severity} status={self.status}>"

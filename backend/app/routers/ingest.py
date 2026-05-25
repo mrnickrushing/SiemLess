@@ -10,8 +10,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.database import get_db
 from app.models.event import SecurityEvent
+from app.models.watchlist import WatchlistEntry
 from app.schemas.event import BatchIngest, RawLogIngest, SecurityEventCreate, SecurityEventRead
 from app.services.alerting import alert_service
 from app.services.correlation import correlation_engine
@@ -32,12 +35,47 @@ async def _safe_send_alert(alert, rule) -> None:
         logger.error("Background alert dispatch failed for alert %s: %s", alert.id, exc)
 
 
+async def _enrich_from_watchlist(db: AsyncSession, event_dict: dict) -> dict:
+    """Add watchlist tags to events whose source_ip or user appears in the watchlist."""
+    try:
+        candidates: list[tuple[str, str]] = []
+        if event_dict.get("source_ip"):
+            candidates.append(("ip", event_dict["source_ip"]))
+        if event_dict.get("user"):
+            candidates.append(("user", event_dict["user"]))
+
+        if not candidates:
+            return event_dict
+
+        from sqlalchemy import or_
+        conditions = [
+            (WatchlistEntry.entry_type == t) & (WatchlistEntry.value == v)
+            for t, v in candidates
+        ]
+        result = await db.execute(
+            select(WatchlistEntry).where(or_(*conditions))
+        )
+        matches = result.scalars().all()
+        if matches:
+            existing_tags: list[str] = list(event_dict.get("tags") or [])
+            new_tags = {"watchlist-match"}
+            for m in matches:
+                new_tags.add(f"watchlist:{m.entry_type}:{m.value}")
+                for t in (m.tags or []):
+                    new_tags.add(t)
+            event_dict["tags"] = existing_tags + [t for t in new_tags if t not in existing_tags]
+    except Exception as exc:
+        logger.debug("Watchlist enrichment error: %s", exc)
+    return event_dict
+
+
 async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_source: str = "api") -> SecurityEvent:
     """Persist a single event and run correlation."""
     now = datetime.now(timezone.utc)
 
     event_dict = event_data.model_dump()
     event_dict = await threat_intel_service.enrich_event(db, event_dict)
+    event_dict = await _enrich_from_watchlist(db, event_dict)
 
     event = SecurityEvent(
         id=uuid.uuid4(),
