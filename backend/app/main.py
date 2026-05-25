@@ -66,18 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.warning("Correlation engine rule loading failed (non-fatal): %s", exc)
 
-    # 4. Probe Redis (non-fatal)
-    try:
-        from app.services.redis_client import redis_client
-        ok = await redis_client.ping()
-        if ok:
-            logger.info("Redis connected")
-        else:
-            logger.warning("Redis not available — pub/sub features disabled")
-    except Exception as exc:
-        logger.warning("Redis probe failed (non-fatal): %s", exc)
-
-    # 5. Start syslog server
+    # 4. Start syslog server
     if settings.SYSLOG_ENABLED:
         try:
             from app.services.syslog_server import syslog_server
@@ -88,7 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Syslog server failed to start (non-fatal): %s", exc)
 
-    # 6. Start correlation engine cleanup task
+    # 5. Start correlation engine cleanup task
     try:
         from app.services.correlation import correlation_engine
         await correlation_engine.start_cleanup_task(
@@ -102,12 +91,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # ---- SHUTDOWN ----
     logger.info("Shutting down SiemLess…")
-
-    try:
-        from app.services.redis_client import redis_client
-        await redis_client.close()
-    except Exception as exc:
-        logger.warning("Error closing Redis client: %s", exc)
 
     try:
         from app.services.syslog_server import syslog_server
@@ -192,10 +175,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 @app.get("/health", tags=["health"], summary="Health check")
 async def health_check() -> dict:
-    """Returns db_ok and redis_ok. No internal detail exposed to callers."""
+    """Returns service health. No internal detail exposed to callers."""
     import sqlalchemy
     from app.database import engine
-    from app.services.redis_client import redis_client
 
     db_ok = True
     try:
@@ -204,12 +186,9 @@ async def health_check() -> dict:
     except Exception:
         db_ok = False
 
-    redis_ok = await redis_client.ping()
-
     return {
         "status": "ok" if db_ok else "degraded",
         "db": db_ok,
-        "redis": redis_ok,
     }
 
 
