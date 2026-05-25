@@ -120,7 +120,7 @@ const AddIndicatorForm: React.FC<AddIndicatorFormProps> = ({ onClose, onSaved })
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-cyber-muted block mb-1">Type *</label>
               <select
@@ -157,7 +157,7 @@ const AddIndicatorForm: React.FC<AddIndicatorFormProps> = ({ onClose, onSaved })
               className="cyber-input w-full font-mono"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-cyber-muted block mb-1">Source *</label>
               <input
@@ -352,7 +352,7 @@ const ThreatIntel: React.FC = () => {
                   <XCircle className="w-5 h-5 text-red-400" />
                   <span className="text-red-400 font-semibold">Threat Match Found!</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div>
                     <span className="text-cyber-muted">Type: </span>
                     <TypeBadge type={checkResult.indicator.type} />

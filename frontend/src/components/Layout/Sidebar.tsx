@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
   LogOut,
+  X,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
 import { logout } from '../../api/auth';
@@ -30,7 +31,11 @@ const navItems: NavItem[] = [
   { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intel' },
 ];
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const location = useLocation();
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
 
@@ -45,18 +50,26 @@ const Sidebar: React.FC = () => {
   }, []);
 
   return (
-    <aside className="w-64 min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
+    <aside className="w-64 h-full min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
       {/* Logo / Branding */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-cyber-border">
-        <div className="w-9 h-9 rounded-lg bg-cyber-accent/10 border border-cyber-accent/30 flex items-center justify-center">
+        <div className="w-9 h-9 rounded-lg bg-cyber-accent/10 border border-cyber-accent/30 flex items-center justify-center flex-shrink-0">
           <Shield className="w-5 h-5 text-cyber-accent" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <span className="text-lg font-bold text-cyber-text tracking-tight">SiemLess</span>
           <div className="text-[10px] font-mono text-cyber-muted tracking-widest uppercase">
             Security Platform
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1 text-cyber-muted hover:text-cyber-text transition-colors flex-shrink-0"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -71,6 +84,7 @@ const Sidebar: React.FC = () => {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={onClose}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150 group ${
                 isActive
                   ? 'bg-cyber-accent/10 text-cyber-accent border border-cyber-accent/20'
