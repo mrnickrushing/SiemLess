@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.alert import Alert
 from app.models.event import SecurityEvent
 from app.models.rule import CorrelationRule
+from app.models.threat_intel import ThreatIndicator
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 logger = logging.getLogger(__name__)
@@ -368,3 +369,177 @@ async def alert_trend(
         })
 
     return {"hours": hours, "since": since.isoformat(), "timeline": timeline}
+
+
+@router.get("/dashboard", summary="Aggregated dashboard statistics")
+async def get_dashboard(db: AsyncSession = Depends(get_db)) -> dict:
+    """Single endpoint that returns all data needed by the dashboard page."""
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    one_hour_ago = now - timedelta(hours=1)
+    since_24h = now - timedelta(hours=24)
+
+    # --- Overview ---
+    events_today = (await db.execute(
+        select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= today_start)
+    )).scalar() or 0
+
+    events_last_hour = (await db.execute(
+        select(func.count()).select_from(SecurityEvent).where(SecurityEvent.timestamp >= one_hour_ago)
+    )).scalar() or 0
+
+    open_alerts = (await db.execute(
+        select(func.count()).select_from(Alert).where(Alert.status == "open")
+    )).scalar() or 0
+
+    critical_alerts = (await db.execute(
+        select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "critical")
+    )).scalar() or 0
+
+    high_alerts = (await db.execute(
+        select(func.count()).select_from(Alert).where(Alert.status == "open", Alert.severity == "high")
+    )).scalar() or 0
+
+    active_rules = (await db.execute(
+        select(func.count()).select_from(CorrelationRule).where(CorrelationRule.enabled.is_(True))
+    )).scalar() or 0
+
+    threats_detected = (await db.execute(
+        select(func.count()).select_from(ThreatIndicator)
+    )).scalar() or 0
+
+    overview = {
+        "total_events_today": events_today,
+        "events_last_hour": events_last_hour,
+        "open_alerts": open_alerts,
+        "critical_alerts": critical_alerts,
+        "high_alerts": high_alerts,
+        "active_rules": active_rules,
+        "threats_detected": threats_detected,
+    }
+
+    # --- Events over time (24h, per-severity per hour) ---
+    eot_result = await db.execute(
+        text("""
+            SELECT
+                date_trunc('hour', timestamp AT TIME ZONE 'UTC') AS hour,
+                severity,
+                COUNT(*) AS cnt
+            FROM security_events
+            WHERE timestamp >= :since
+            GROUP BY hour, severity
+            ORDER BY hour ASC
+        """),
+        {"since": since_24h},
+    )
+    eot_buckets: dict[str, dict] = {}
+    for row in eot_result.all():
+        if row.hour:
+            key = row.hour.strftime("%Y-%m-%dT%H:00:00Z") if hasattr(row.hour, "strftime") else str(row.hour)
+            if key not in eot_buckets:
+                eot_buckets[key] = {}
+            eot_buckets[key][row.severity] = row.cnt
+
+    events_over_time = []
+    for h in range(24):
+        bucket_time = (now - timedelta(hours=24 - h)).replace(minute=0, second=0, microsecond=0)
+        key = bucket_time.strftime("%Y-%m-%dT%H:00:00Z")
+        sev = eot_buckets.get(key, {})
+        events_over_time.append({
+            "timestamp": key,
+            "count": sum(sev.values()),
+            "critical": sev.get("critical", 0),
+            "high": sev.get("high", 0),
+            "medium": sev.get("medium", 0),
+            "low": sev.get("low", 0),
+        })
+
+    # --- Severity distribution (24h) ---
+    sev_result = await db.execute(
+        select(SecurityEvent.severity, func.count().label("count"))
+        .where(SecurityEvent.timestamp >= since_24h)
+        .group_by(SecurityEvent.severity)
+        .order_by(func.count().desc())
+    )
+    severity_distribution = [{"severity": row.severity, "count": row.count} for row in sev_result.all()]
+
+    # --- Category distribution (24h, top 10) ---
+    cat_result = await db.execute(
+        select(SecurityEvent.category, func.count().label("count"))
+        .where(SecurityEvent.timestamp >= since_24h)
+        .group_by(SecurityEvent.category)
+        .order_by(func.count().desc())
+        .limit(10)
+    )
+    category_distribution = [{"category": row.category, "count": row.count} for row in cat_result.all()]
+
+    # --- Top sources (24h, top 10, with severity breakdown) ---
+    top_src_result = await db.execute(
+        text("""
+            SELECT
+                source_ip,
+                COUNT(*) AS cnt,
+                COUNT(*) FILTER (WHERE severity = 'critical') AS critical,
+                COUNT(*) FILTER (WHERE severity = 'high') AS high,
+                COUNT(*) FILTER (WHERE severity = 'medium') AS medium,
+                COUNT(*) FILTER (WHERE severity = 'low') AS low
+            FROM security_events
+            WHERE source_ip IS NOT NULL AND timestamp >= :since
+            GROUP BY source_ip
+            ORDER BY cnt DESC
+            LIMIT 10
+        """),
+        {"since": since_24h},
+    )
+    top_sources = [
+        {
+            "source_ip": row.source_ip,
+            "count": row.cnt,
+            "severity_breakdown": {
+                "critical": row.critical,
+                "high": row.high,
+                "medium": row.medium,
+                "low": row.low,
+            },
+        }
+        for row in top_src_result.all()
+    ]
+
+    # --- Recent alerts (10 most recent) ---
+    recent_result = await db.execute(
+        select(Alert).order_by(Alert.created_at.desc()).limit(10)
+    )
+    recent_alerts = [
+        {
+            "id": str(a.id),
+            "title": a.title,
+            "description": a.description,
+            "severity": a.severity,
+            "status": a.status,
+            "rule_id": str(a.rule_id) if a.rule_id else None,
+            "rule_name": None,
+            "event_ids": a.event_ids or [],
+            "source_ips": a.source_ips or [],
+            "affected_users": a.affected_users or [],
+            "affected_hosts": [],
+            "mitre_tactic": a.mitre_tactic,
+            "mitre_technique": a.mitre_technique,
+            "created_at": a.created_at.isoformat(),
+            "updated_at": a.created_at.isoformat(),
+            "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+            "assigned_to": a.assigned_to,
+            "notes": a.notes,
+            "false_positive_reason": None,
+            "event_count": len(a.event_ids or []),
+        }
+        for a in recent_result.scalars().all()
+    ]
+
+    return {
+        "overview": overview,
+        "events_over_time": events_over_time,
+        "severity_distribution": severity_distribution,
+        "category_distribution": category_distribution,
+        "top_sources": top_sources,
+        "recent_alerts": recent_alerts,
+    }

@@ -13,11 +13,13 @@ All routers are mounted under /api/v1.
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
@@ -244,15 +246,36 @@ app.include_router(stats.router, prefix=API_PREFIX, dependencies=_auth)
 
 
 # ---------------------------------------------------------------------------
-# Root redirect
+# Frontend static files (served when built into the Docker image)
 # ---------------------------------------------------------------------------
 
-@app.get("/", include_in_schema=False)
-async def root() -> dict:
-    return {
-        "name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
-        "health": "/health",
-        "api": API_PREFIX,
-    }
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str) -> Response:
+    if not _STATIC_DIR.exists():
+        return JSONResponse({
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "docs": "/docs",
+            "health": "/health",
+            "api": API_PREFIX,
+        })
+
+    # Serve the actual file if it exists (JS bundles, CSS, images, favicon…)
+    candidate = (_STATIC_DIR / full_path).resolve()
+    try:
+        candidate.relative_to(_STATIC_DIR.resolve())  # guard against path traversal
+    except ValueError:
+        pass
+    else:
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+
+    # All other paths → index.html (SPA client-side routing)
+    index = _STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+
+    return JSONResponse({"detail": "Frontend not built"}, status_code=404)
