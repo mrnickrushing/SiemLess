@@ -1,6 +1,16 @@
 """
 Correlation engine: evaluates events against rules and creates Alerts.
 Uses an in-memory sliding-window counter for threshold-based rules.
+
+IMPORTANT — Single-process assumption:
+  WindowCounter state is held in a plain Python dict in this process.
+  asyncio.Lock provides safe concurrency within a single event loop, but
+  this does NOT work across multiple worker processes (e.g. gunicorn with
+  workers > 1, or multiple uvicorn instances behind a load balancer).
+  In a multi-process deployment the counters would be per-process and
+  thresholds would never be reached correctly. For multi-process support,
+  migrate _counters to a shared Redis backend (e.g. a sorted-set per
+  window_key with ZADD + ZCOUNT + EXPIRE).
 """
 import asyncio
 import logging
