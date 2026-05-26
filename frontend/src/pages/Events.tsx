@@ -2,22 +2,22 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO, subDays } from 'date-fns';
 import { Filter, RefreshCw, Play, Pause, Tag } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getEvents, getEventCategories, getEventLogTypes } from '../api/events';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { TableSkeleton } from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import Pagination from '../components/shared/Pagination';
-import EventDetailPanel from './EventDetail';
 import type { EventFilters, Severity } from '../types';
 
 const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 const Events: React.FC = () => {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<EventFilters>({
     page: 1,
     page_size: 50,
   });
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -261,7 +261,7 @@ const Events: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-cyber-border/30">
                   {data?.items.map((event) => (
-                    <tr key={event.id} onClick={() => setSelectedEventId(event.id)} className="table-row-hover">
+                    <tr key={event.id} onClick={() => navigate(`/events/${event.id}`)} className="table-row-hover">
                       <td className="px-4 py-2.5 font-mono text-xs text-cyber-muted whitespace-nowrap">{formatTs(event.timestamp)}</td>
                       <td className="px-4 py-2.5"><SeverityBadge severity={event.severity} size="sm" /></td>
                       <td className="px-4 py-2.5 font-mono text-xs text-cyber-accent whitespace-nowrap">{event.source_ip || '—'}</td>
@@ -305,9 +305,6 @@ const Events: React.FC = () => {
         )}
       </div>
 
-      {selectedEventId && (
-        <EventDetailPanel eventId={selectedEventId} onClose={() => setSelectedEventId(null)} />
-      )}
     </div>
   );
 };
