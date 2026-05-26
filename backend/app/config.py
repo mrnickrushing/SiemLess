@@ -151,12 +151,17 @@ class Settings(BaseSettings):
             )
         if errors:
             msg = "\n".join(f"  - {e}" for e in errors)
+            # Print directly to stderr before raising so the message is
+            # visible in platform logs even when the exception is caught.
             print(
                 f"\n[SiemLess] FATAL: Insecure configuration detected:\n{msg}\n"
                 "Set DEBUG=true to bypass this check in development.\n",
                 file=sys.stderr,
+                flush=True,
             )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Insecure configuration: {'; '.join(errors)}"
+            )
         return self
 
     @property
