@@ -1,3 +1,25 @@
-from app.routers import events, alerts, rules, ingest, search, threat_intel, stats
+from app.routers import (
+    alerts,
+    auth,
+    events,
+    ingest,
+    rules,
+    saved_searches,
+    search,
+    stats,
+    threat_intel,
+    watchlists,
+)
 
-__all__ = ["events", "alerts", "rules", "ingest", "search", "threat_intel", "stats"]
+__all__ = [
+    "alerts",
+    "auth",
+    "events",
+    "ingest",
+    "rules",
+    "saved_searches",
+    "search",
+    "stats",
+    "threat_intel",
+    "watchlists",
+]
