@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { Search as SearchIcon, Clock, Tag, Lightbulb, X, Bookmark, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,7 +10,7 @@ import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { TableSkeleton } from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import Pagination from '../components/shared/Pagination';
-import EventDetailPanel from './EventDetail';
+
 
 const SEARCH_EXAMPLES = [
   { label: 'Failed login attempts', query: 'category:authentication AND severity:high' },
@@ -97,11 +97,11 @@ const SaveSearchModal: React.FC<{
 };
 
 const Search: React.FC = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [submittedQuery, setSubmittedQuery] = useState(searchParams.get('q') || '');
   const [page, setPage] = useState(1);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedDropdown, setShowSavedDropdown] = useState(false);
   const savedDropdownRef = useRef<HTMLDivElement>(null);
@@ -348,7 +348,7 @@ const Search: React.FC = () => {
                     {data?.items.map((event) => (
                       <tr
                         key={event.id}
-                        onClick={() => setSelectedEventId(event.id)}
+                        onClick={() => navigate(`/events/${event.id}`)}
                         className="table-row-hover"
                       >
                         <td className="px-4 py-2.5 font-mono text-xs text-cyber-muted whitespace-nowrap">
@@ -404,13 +404,6 @@ const Search: React.FC = () => {
             </>
           )}
         </div>
-      )}
-
-      {selectedEventId && (
-        <EventDetailPanel
-          eventId={selectedEventId}
-          onClose={() => setSelectedEventId(null)}
-        />
       )}
 
       {showSaveModal && (
