@@ -9,11 +9,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.database import get_db
 from app.models.event import SecurityEvent
+from app.models.rule import CorrelationRule
 from app.models.watchlist import WatchlistEntry
 from app.schemas.event import BatchIngest, RawLogIngest, SecurityEventCreate, SecurityEventRead
 from app.services.alerting import alert_service
@@ -47,7 +47,6 @@ async def _enrich_from_watchlist(db: AsyncSession, event_dict: dict) -> dict:
         if not candidates:
             return event_dict
 
-        from sqlalchemy import or_
         conditions = [
             (WatchlistEntry.entry_type == t) & (WatchlistEntry.value == v)
             for t, v in candidates
@@ -105,11 +104,11 @@ async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_so
 
     # Run correlation engine; dispatch alert notifications as a background task
     # using _safe_send_alert so any notification failures are logged, not swallowed.
+    # Alert notification tasks fire after the outer db.commit() in the calling route,
+    # which is the correct ordering — events are visible in the DB before notifications fire.
     try:
         alerts = await correlation_engine.evaluate_event(db, event)
         for alert in alerts:
-            from app.models.rule import CorrelationRule
-            from sqlalchemy import select
             rule_result = await db.execute(
                 select(CorrelationRule).where(CorrelationRule.id == alert.rule_id)
             )
@@ -250,8 +249,9 @@ async def ingest_file(
                 logger.debug("Error parsing line: %s | %s", line[:80], exc)
                 errors += 1
 
-        # Commit each batch; if this request is cancelled after a partial commit
-        # the stored/errors counts in the response will reflect what was persisted.
+        # Commit each batch. Alert notification tasks (created inside _store_event
+        # via asyncio.create_task) may begin executing after this commit, which is
+        # the correct ordering — events are visible in the DB before notifications fire.
         await db.commit()
 
     return {
