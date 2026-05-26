@@ -15,6 +15,7 @@ import {
   Target,
   Bookmark,
   List,
+  Settings,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
 import { getAlerts } from '../../api/alerts';
@@ -37,6 +38,7 @@ const BASE_NAV: Omit<NavItem, 'badge'>[] = [
   { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intel' },
   { to: '/mitre', icon: <Target className="w-5 h-5" />, label: 'MITRE ATT&CK' },
   { to: '/watchlist', icon: <List className="w-5 h-5" />, label: 'Watchlist' },
+  { to: '/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
 ];
 
 interface SidebarProps {
