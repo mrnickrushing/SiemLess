@@ -6,8 +6,10 @@ import Events from './pages/Events';
 import Alerts from './pages/Alerts';
 import Rules from './pages/Rules';
 import Search from './pages/Search';
+import SavedSearches from './pages/SavedSearches';
 import ThreatIntel from './pages/ThreatIntel';
 import MitreMatrix from './pages/MitreMatrix';
+import Watchlist from './pages/Watchlist';
 import Login from './pages/Login';
 import { getMe } from './api/auth';
 
@@ -58,8 +60,10 @@ const App: React.FC = () => {
                   <Route path="/alerts" element={<Alerts />} />
                   <Route path="/rules" element={<Rules />} />
                   <Route path="/search" element={<Search />} />
+                  <Route path="/saved-searches" element={<SavedSearches />} />
                   <Route path="/threat-intel" element={<ThreatIntel />} />
                   <Route path="/mitre" element={<MitreMatrix />} />
+                  <Route path="/watchlist" element={<Watchlist />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>

@@ -13,6 +13,8 @@ import {
   LogOut,
   X,
   Target,
+  Bookmark,
+  List,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
 import { getAlerts } from '../../api/alerts';
@@ -31,8 +33,10 @@ const BASE_NAV: Omit<NavItem, 'badge'>[] = [
   { to: '/alerts', icon: <Bell className="w-5 h-5" />, label: 'Alerts' },
   { to: '/rules', icon: <BookOpen className="w-5 h-5" />, label: 'Rules' },
   { to: '/search', icon: <Search className="w-5 h-5" />, label: 'Search' },
+  { to: '/saved-searches', icon: <Bookmark className="w-5 h-5" />, label: 'Saved Searches' },
   { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intel' },
   { to: '/mitre', icon: <Target className="w-5 h-5" />, label: 'MITRE ATT&CK' },
+  { to: '/watchlist', icon: <List className="w-5 h-5" />, label: 'Watchlist' },
 ];
 
 interface SidebarProps {

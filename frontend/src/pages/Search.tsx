@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
-import { Search as SearchIcon, Clock, Tag, Lightbulb, X } from 'lucide-react';
+import { Search as SearchIcon, Clock, Tag, Lightbulb, X, Bookmark, ChevronDown } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { searchEvents } from '../api/search';
+import { getSavedSearches, createSavedSearch } from '../api/savedSearches';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { TableSkeleton } from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
@@ -21,12 +23,88 @@ const SEARCH_EXAMPLES = [
   { label: 'Windows events', query: 'log_type:windows' },
 ];
 
+// Inline save-search modal
+const SaveSearchModal: React.FC<{
+  query: string;
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ query, onClose, onSaved }) => {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => createSavedSearch({ name: name.trim(), description: description.trim() || undefined, query }),
+    onSuccess: () => {
+      toast.success('Search saved');
+      queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
+      onSaved();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="cyber-card w-full max-w-md mx-4">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-cyber-border">
+          <h2 className="text-sm font-semibold text-cyber-text">Save Search</h2>
+          <button onClick={onClose} className="text-cyber-muted hover:text-cyber-text">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-cyber-muted mb-1.5">Query</label>
+            <p className="text-xs font-mono text-cyber-accent bg-cyber-accent/5 px-3 py-2 rounded border border-cyber-border truncate">
+              {query}
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-cyber-muted mb-1.5">
+              Name <span className="text-cyber-danger">*</span>
+            </label>
+            <input
+              className="cyber-input w-full text-sm"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Failed SSH logins"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-cyber-muted mb-1.5">Description</label>
+            <input
+              className="cyber-input w-full text-sm"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-1">
+            <button onClick={onClose} className="cyber-btn-secondary text-sm px-4 py-2">Cancel</button>
+            <button
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending || !name.trim()}
+              className="cyber-btn-primary text-sm px-4 py-2"
+            >
+              {mutation.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Search: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [submittedQuery, setSubmittedQuery] = useState(searchParams.get('q') || '');
   const [page, setPage] = useState(1);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSavedDropdown, setShowSavedDropdown] = useState(false);
+  const savedDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -36,10 +114,27 @@ const Search: React.FC = () => {
     }
   }, [searchParams]);
 
+  // Close saved-searches dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (savedDropdownRef.current && !savedDropdownRef.current.contains(e.target as Node)) {
+        setShowSavedDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['search', submittedQuery, page],
     queryFn: () => searchEvents(submittedQuery, page, 50),
     enabled: !!submittedQuery.trim(),
+  });
+
+  const { data: savedSearches = [] } = useQuery({
+    queryKey: ['saved-searches'],
+    queryFn: getSavedSearches,
+    staleTime: 30_000,
   });
 
   const handleSearch = (q?: string) => {
@@ -100,6 +195,45 @@ const Search: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Saved searches dropdown */}
+          <div className="relative" ref={savedDropdownRef}>
+            <button
+              onClick={() => setShowSavedDropdown((v) => !v)}
+              className="cyber-btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm h-full"
+              title="Saved searches"
+            >
+              <Bookmark className="w-4 h-4" />
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showSavedDropdown && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-72 cyber-card shadow-xl border border-cyber-border overflow-hidden">
+                <div className="px-3 py-2 border-b border-cyber-border text-xs font-medium text-cyber-muted">
+                  Saved Searches
+                </div>
+                {savedSearches.length === 0 ? (
+                  <p className="px-3 py-4 text-xs text-cyber-muted text-center">No saved searches yet</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto">
+                    {savedSearches.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          handleSearch(s.query);
+                          setShowSavedDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-cyber-border/40 transition-colors border-b border-cyber-border/30 last:border-0"
+                      >
+                        <p className="text-xs font-medium text-cyber-text truncate">{s.name}</p>
+                        <p className="text-[10px] font-mono text-cyber-muted truncate mt-0.5">{s.query}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => handleSearch()}
             disabled={!query.trim()}
@@ -107,6 +241,17 @@ const Search: React.FC = () => {
           >
             Search
           </button>
+
+          {submittedQuery && (
+            <button
+              onClick={() => setShowSaveModal(true)}
+              className="cyber-btn-secondary flex items-center gap-1.5 px-3 py-2 text-sm"
+              title="Save this search"
+            >
+              <Bookmark className="w-4 h-4" />
+              Save
+            </button>
+          )}
         </div>
 
         {/* Result count */}
@@ -265,6 +410,14 @@ const Search: React.FC = () => {
         <EventDetailPanel
           eventId={selectedEventId}
           onClose={() => setSelectedEventId(null)}
+        />
+      )}
+
+      {showSaveModal && (
+        <SaveSearchModal
+          query={submittedQuery}
+          onClose={() => setShowSaveModal(false)}
+          onSaved={() => setShowSaveModal(false)}
         />
       )}
     </div>
