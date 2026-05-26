@@ -29,6 +29,7 @@ import { getDashboardStats } from '../api/stats';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { CardSkeleton, TableSkeleton } from '../components/shared/LoadingSpinner';
+import GeoMap from '../components/shared/GeoMap';
 import type { DashboardStats } from '../types';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -210,6 +211,7 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
         </div>
       )}
 
+      {/* Bottom row: Recent Alerts + Source IPs table + GeoMap */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="cyber-card overflow-hidden">
           <div className="px-5 py-4 border-b border-cyber-border">
@@ -273,6 +275,11 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
           )}
         </div>
       </div>
+
+      {/* GeoMap — full width below the table row */}
+      {top_sources.length > 0 && (
+        <GeoMap sources={top_sources} />
+      )}
     </div>
   );
 };

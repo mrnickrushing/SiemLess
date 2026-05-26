@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Events from './pages/Events';
@@ -45,37 +46,39 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ username, authChecked, setUsername }}>
-      <Routes>
-        <Route
-          path="/login"
-          element={<Login onSuccess={(u) => setUsername(u)} />}
-        />
-        <Route
-          path="/*"
-          element={
-            <PrivateRoute>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/events" element={<Events />} />
-                  <Route path="/events/:id" element={<EventDetailPage />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/rules" element={<Rules />} />
-                  <Route path="/search" element={<Search />} />
-                  <Route path="/saved-searches" element={<SavedSearches />} />
-                  <Route path="/threat-intel" element={<ThreatIntel />} />
-                  <Route path="/mitre" element={<MitreMatrix />} />
-                  <Route path="/watchlist" element={<Watchlist />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </Layout>
-            </PrivateRoute>
-          }
-        />
-      </Routes>
-    </AuthContext.Provider>
+    <ThemeProvider>
+      <AuthContext.Provider value={{ username, authChecked, setUsername }}>
+        <Routes>
+          <Route
+            path="/login"
+            element={<Login onSuccess={(u) => setUsername(u)} />}
+          />
+          <Route
+            path="/*"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/events" element={<Events />} />
+                    <Route path="/events/:id" element={<EventDetailPage />} />
+                    <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/rules" element={<Rules />} />
+                    <Route path="/search" element={<Search />} />
+                    <Route path="/saved-searches" element={<SavedSearches />} />
+                    <Route path="/threat-intel" element={<ThreatIntel />} />
+                    <Route path="/mitre" element={<MitreMatrix />} />
+                    <Route path="/watchlist" element={<Watchlist />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+        </Routes>
+      </AuthContext.Provider>
+    </ThemeProvider>
   );
 };
 

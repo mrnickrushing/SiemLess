@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
+import {
   Bell,
   ChevronDown,
   X,
@@ -12,9 +22,11 @@ import {
   Hash,
   AlertTriangle,
   RefreshCw,
+  TrendingUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAlerts, getAlert, updateAlert } from '../api/alerts';
+import { getAlertTimeline } from '../api/stats';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { TableSkeleton, LoadingSpinner } from '../components/shared/LoadingSpinner';
@@ -24,6 +36,13 @@ import type { Alert, AlertFilters, AlertStatus, Severity, AlertUpdateData } from
 
 const STATUSES: AlertStatus[] = ['open', 'investigating', 'resolved', 'false_positive'];
 const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: '#ff3b3b',
+  high: '#ff8c00',
+  medium: '#ffd700',
+  low: '#4a9eff',
+};
 
 const AlertDetailPanel: React.FC<{ alertId: string; onClose: () => void }> = ({ alertId, onClose }) => {
   const queryClient = useQueryClient();
@@ -167,6 +186,40 @@ const AlertDetailPanel: React.FC<{ alertId: string; onClose: () => void }> = ({ 
   );
 };
 
+const AlertTimeline: React.FC = () => {
+  const { data = [] } = useQuery({
+    queryKey: ['alert-timeline'],
+    queryFn: () => getAlertTimeline(24),
+    refetchInterval: 60_000,
+  });
+
+  if (data.length === 0) return null;
+
+  return (
+    <div className="cyber-card p-5 mb-4">
+      <h2 className="text-sm font-semibold text-cyber-text flex items-center gap-2 mb-4">
+        <TrendingUp className="w-4 h-4 text-cyber-accent" />
+        Alert Volume (24h)
+      </h2>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#2a3148" />
+          <XAxis dataKey="hour" tick={{ fill: '#8892a4', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a3148' }} />
+          <YAxis tick={{ fill: '#8892a4', fontSize: 10 }} tickLine={false} axisLine={false} />
+          <Tooltip
+            contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3148', borderRadius: '6px', color: '#e2e8f0', fontSize: 11 }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, color: '#8892a4' }} iconType="circle" iconSize={7} />
+          <Bar dataKey="critical" stackId="a" fill={SEVERITY_COLORS.critical} name="Critical" />
+          <Bar dataKey="high"     stackId="a" fill={SEVERITY_COLORS.high}     name="High" />
+          <Bar dataKey="medium"   stackId="a" fill={SEVERITY_COLORS.medium}   name="Medium" />
+          <Bar dataKey="low"      stackId="a" fill={SEVERITY_COLORS.low}      name="Low" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
 const Alerts: React.FC = () => {
   const [filters, setFilters] = useState<AlertFilters>({ page: 1, page_size: 20 });
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
@@ -205,6 +258,9 @@ const Alerts: React.FC = () => {
           Refresh
         </button>
       </div>
+
+      {/* Alert volume timeline chart */}
+      <AlertTimeline />
 
       {/* Filters */}
       <div className="cyber-card p-4 mb-4">

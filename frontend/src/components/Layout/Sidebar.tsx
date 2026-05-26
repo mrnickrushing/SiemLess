@@ -17,16 +17,19 @@ import {
   List,
   Settings,
   Keyboard,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
 import { getAlerts } from '../../api/alerts';
 import { logout } from '../../api/auth';
+import { useTheme } from '../../context/ThemeContext';
 
 interface NavItem {
   to: string;
   icon: React.ReactNode;
   label: string;
-  hint?: string;   // keyboard shortcut hint shown on hover
+  hint?: string;
   badge?: number;
 }
 
@@ -50,6 +53,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [openAlertCount, setOpenAlertCount] = useState(0);
   const sseRef = useRef<EventSource | null>(null);
@@ -78,7 +82,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
     fetchCount();
     const interval = setInterval(fetchCount, 30_000);
 
-    // Listen on SSE stream to detect new events and refetch
     try {
       const es = new EventSource('/api/v1/events/stream');
       es.onmessage = () => fetchCount();
@@ -93,13 +96,20 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
     };
   }, []);
 
+  // Clear badge when navigating to /alerts
+  useEffect(() => {
+    if (location.pathname === '/alerts') {
+      setOpenAlertCount(0);
+    }
+  }, [location.pathname]);
+
   const navItems: NavItem[] = BASE_NAV.map((item) =>
     item.to === '/alerts' ? { ...item, badge: openAlertCount || undefined } : item
   );
 
   return (
     <aside className="w-64 h-full min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
-      {/* Logo */}
+      {/* Logo + theme toggle */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-cyber-border">
         <div className="w-9 h-9 rounded-lg bg-cyber-accent/10 border border-cyber-accent/30 flex items-center justify-center flex-shrink-0">
           <Shield className="w-5 h-5 text-cyber-accent" />
@@ -108,6 +118,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
           <span className="text-lg font-bold text-cyber-text tracking-tight">SiemLess</span>
           <div className="text-[10px] font-mono text-cyber-muted tracking-widest uppercase">Security Platform</div>
         </div>
+        <button
+          onClick={toggleTheme}
+          className="p-1.5 rounded-md text-cyber-muted hover:text-cyber-text hover:bg-cyber-border/40 transition-colors flex-shrink-0"
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
         <button
           onClick={onClose}
           className="lg:hidden p-1 text-cyber-muted hover:text-cyber-text transition-colors flex-shrink-0"
@@ -143,7 +161,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
                 {item.icon}
               </span>
               <span className="flex-1">{item.label}</span>
-              {/* Keyboard hint — visible on hover */}
               {item.hint && !item.badge && (
                 <span className="hidden group-hover:flex items-center gap-0.5 opacity-60">
                   {item.hint.split(' ').map((k, i) => (

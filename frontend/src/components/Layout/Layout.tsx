@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { Menu, Shield } from 'lucide-react';
+import { Menu, Shield, Sun, Moon } from 'lucide-react';
 import Sidebar from './Sidebar';
 import KeyboardShortcutsModal from '../shared/KeyboardShortcutsModal';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { useTheme } from '../../context/ThemeContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const openHelp = useCallback(() => setShortcutsOpen(true), []);
   const closeHelp = useCallback(() => setShortcutsOpen(false), []);
@@ -56,6 +58,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Shield className="w-4 h-4 text-cyber-accent" />
           </div>
           <span className="text-sm font-bold text-cyber-text tracking-tight">SiemLess</span>
+          <button
+            onClick={toggleTheme}
+            className="ml-auto p-1.5 rounded-md text-cyber-muted hover:text-cyber-text hover:bg-cyber-border/40 transition-colors"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </div>
 
         <div className="flex-1 p-4 lg:p-6">

@@ -34,6 +34,34 @@
   *::-webkit-scrollbar-thumb:hover {
     background: #3a4158;
   }
+
+  /* ── Light mode overrides ── */
+  [data-theme='light'] {
+    --color-cyber-bg:         #f0f2f5;
+    --color-cyber-card:       #ffffff;
+    --color-cyber-border:     #d1d9e0;
+    --color-cyber-text:       #0f1117;
+    --color-cyber-muted:      #5a6478;
+    --color-cyber-accent:     #0d9e84;
+    --color-cyber-accent-dim: #0b8a73;
+    --color-cyber-danger:     #dc2626;
+  }
+
+  [data-theme='light'] * {
+    scrollbar-color: #d1d9e0 #f0f2f5;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-track {
+    background: #f0f2f5;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-thumb {
+    background: #d1d9e0;
+  }
+
+  [data-theme='light'] *::-webkit-scrollbar-thumb:hover {
+    background: #b0bec5;
+  }
 }
 
 @layer components {
