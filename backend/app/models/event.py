@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    ARRAY,
     JSON,
     DateTime,
     Index,
@@ -65,7 +64,7 @@ class SecurityEvent(Base):
     parsed_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Metadata
-    tags: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True, index=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     country: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     process: Mapped[str | None] = mapped_column(String(255), nullable=True)
