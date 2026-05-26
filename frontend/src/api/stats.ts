@@ -21,7 +21,8 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 export interface AlertTimelinePoint {
-  hour: string;   // e.g. "14:00"
+  /** ISO-8601 UTC hour bucket, e.g. "2026-05-25T14:00:00Z" */
+  hour: string;
   critical: number;
   high: number;
   medium: number;
@@ -31,10 +32,12 @@ export interface AlertTimelinePoint {
 
 export async function getAlertTimeline(hours = 24): Promise<AlertTimelinePoint[]> {
   try {
-    const response = await client.get<AlertTimelinePoint[]>(`/stats/alert-timeline?hours=${hours}`);
-    return response.data;
+    // Backend exposes /stats/alert-trend — returns the same AlertTimelinePoint shape
+    const response = await client.get<{ hours: number; since: string; timeline: AlertTimelinePoint[] }>(
+      `/stats/alert-trend?hours=${hours}`
+    );
+    return response.data.timeline ?? [];
   } catch {
-    // Gracefully return empty array if endpoint not yet available
     return [];
   }
 }
