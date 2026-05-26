@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Menu, Shield } from 'lucide-react';
 import Sidebar from './Sidebar';
+import KeyboardShortcutsModal from '../shared/KeyboardShortcutsModal';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -8,6 +10,15 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  const openHelp = useCallback(() => setShortcutsOpen(true), []);
+  const closeHelp = useCallback(() => setShortcutsOpen(false), []);
+
+  useKeyboardShortcuts({
+    onHelp: openHelp,
+    onEscape: closeHelp,
+  });
 
   return (
     <div className="flex min-h-screen bg-cyber-bg">
@@ -27,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar onClose={() => setSidebarOpen(false)} onHelpOpen={openHelp} />
       </div>
 
       {/* Main content area */}
@@ -51,6 +62,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {children}
         </div>
       </main>
+
+      {/* Keyboard shortcuts modal */}
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeHelp} />
     </div>
   );
 };
