@@ -6,7 +6,9 @@ Startup sequence:
 2. Seed default correlation rules
 3. Load rules into correlation engine
 4. Start syslog UDP/TCP server (background)
-5. Start correlation engine maintenance task
+5. Start correlation engine cleanup task
+6. Start SLA breach checker (background)
+7. Start event retention purge task (background)
 
 All protected routers are mounted under /api/v1 with JWT auth dependency.
 """
@@ -14,16 +16,17 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
+import sqlalchemy
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.database import AsyncSessionLocal, init_db
+from app.database import AsyncSessionLocal, engine, init_db
 from app.deps import get_current_user
 from app.routers import alerts, auth, events, ingest, rules, saved_searches, search, stats, threat_intel, watchlists
 
@@ -223,9 +226,6 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 @app.get("/health", tags=["health"], summary="Health check")
 async def health_check() -> dict:
     """Returns service health. No internal detail exposed to callers."""
-    import sqlalchemy
-    from app.database import engine
-
     db_ok = True
     try:
         async with engine.connect() as conn:
@@ -241,15 +241,13 @@ async def health_check() -> dict:
 
 async def _sla_check_loop(interval: int) -> None:
     """Periodically mark open alerts that have breached their SLA."""
-    import asyncio as _asyncio
-    from datetime import timedelta
     from app.models.alert import Alert
-    from sqlalchemy import select, update
+    from sqlalchemy import update
 
     while True:
-        await _asyncio.sleep(interval)
+        await asyncio.sleep(interval)
         try:
-            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            now = datetime.now(timezone.utc)
             async with AsyncSessionLocal() as db:
                 sla_map = {}
                 if settings.SLA_CRITICAL_MINUTES > 0:
@@ -276,20 +274,15 @@ async def _sla_check_loop(interval: int) -> None:
 
 async def _retention_purge_loop(interval: int) -> None:
     """Periodically delete security events older than EVENT_RETENTION_DAYS."""
-    import asyncio as _asyncio
-    from datetime import timedelta
     from sqlalchemy import delete
     from app.models.event import SecurityEvent
 
     while True:
-        await _asyncio.sleep(interval)
+        await asyncio.sleep(interval)
         if settings.EVENT_RETENTION_DAYS <= 0:
             continue
         try:
-            cutoff = (
-                __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-                - timedelta(days=settings.EVENT_RETENTION_DAYS)
-            )
+            cutoff = datetime.now(timezone.utc) - timedelta(days=settings.EVENT_RETENTION_DAYS)
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
                     delete(SecurityEvent).where(SecurityEvent.timestamp < cutoff)
@@ -297,7 +290,11 @@ async def _retention_purge_loop(interval: int) -> None:
                 deleted = result.rowcount
                 await db.commit()
             if deleted:
-                logger.info("Retention purge: deleted %d events older than %d days", deleted, settings.EVENT_RETENTION_DAYS)
+                logger.info(
+                    "Retention purge: deleted %d events older than %d days",
+                    deleted,
+                    settings.EVENT_RETENTION_DAYS,
+                )
         except Exception as exc:
             logger.warning("Retention purge error: %s", exc)
 
