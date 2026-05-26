@@ -28,26 +28,34 @@ def parse_windows_event(message: str) -> dict:
     """Parse a Windows security event log message."""
     result: dict = {"log_type": "windows", "category": "authentication"}
 
+    # Determine event type first so we assign the correct action below.
+    is_failure = "4625" in message or "Logon Failure" in message or "failed" in message.lower()
+    is_success = "4624" in message or "Logon Success" in message
+
+    # Enrich with structured logon fields where available.
     m = RE_WINDOWS_LOGON.search(message)
-    if m:
+    if m and (is_failure or is_success):
         gd = m.groupdict()
         logon_type = int(gd.get("logon_type", 0))
         result.update({
             "source_ip": gd.get("src_ip"),
             "user": gd.get("user"),
-            "action": "success",
+            "action": "failed" if is_failure else "success",
             "parsed_fields": {
+                "event": "logon_failure" if is_failure else "logon_success",
                 "logon_type": logon_type,
                 "logon_type_desc": _windows_logon_type(logon_type),
             },
         })
+        if is_failure:
+            result["severity"] = "medium"
         return result
 
-    if "4625" in message or "Logon Failure" in message or "failed" in message.lower():
+    if is_failure:
         result["action"] = "failed"
         result["severity"] = "medium"
         result["parsed_fields"] = {"event": "logon_failure"}
-    elif "4624" in message or "Logon Success" in message:
+    elif is_success:
         result["action"] = "success"
         result["parsed_fields"] = {"event": "logon_success"}
     elif "4648" in message:

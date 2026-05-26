@@ -25,7 +25,7 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import and_, func, not_, or_, select
