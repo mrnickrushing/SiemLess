@@ -13,6 +13,12 @@ import ThreatIntel from './pages/ThreatIntel';
 import MitreMatrix from './pages/MitreMatrix';
 import Watchlist from './pages/Watchlist';
 import Settings from './pages/Settings';
+import Cases from './pages/Cases';
+import Compliance from './pages/Compliance';
+import UEBA from './pages/UEBA';
+import Connectors from './pages/Connectors';
+import Playbooks from './pages/Playbooks';
+import Assets from './pages/Assets';
 import Login from './pages/Login';
 import { getMe } from './api/auth';
 
@@ -69,6 +75,12 @@ const App: React.FC = () => {
                     <Route path="/threat-intel" element={<ThreatIntel />} />
                     <Route path="/mitre" element={<MitreMatrix />} />
                     <Route path="/watchlist" element={<Watchlist />} />
+                    <Route path="/cases" element={<Cases />} />
+                    <Route path="/compliance" element={<Compliance />} />
+                    <Route path="/ueba" element={<UEBA />} />
+                    <Route path="/connectors" element={<Connectors />} />
+                    <Route path="/playbooks" element={<Playbooks />} />
+                    <Route path="/assets" element={<Assets />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

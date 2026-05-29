@@ -273,7 +273,7 @@ const Playbooks: React.FC = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Playbook> }) =>
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updatePlaybook>[1] }) =>
       updatePlaybook(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['playbooks'] });
@@ -377,7 +377,7 @@ const Playbooks: React.FC = () => {
                         Run
                       </button>
                       <button
-                        onClick={() => setEditing(pb)}
+                        onClick={() => setEditing(pb as Playbook)}
                         className="cyber-btn-secondary text-xs px-2.5 py-1.5"
                       >
                         Edit
