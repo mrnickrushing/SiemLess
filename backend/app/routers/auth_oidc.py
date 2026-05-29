@@ -25,6 +25,7 @@ from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.deps import create_access_token, get_current_user
 from app.models.sso import SSOConfig
@@ -85,7 +86,7 @@ async def list_providers(db: AsyncSession = Depends(get_db)) -> list[SSOProvider
         SSOProviderPublic(
             provider_name=p.provider_name,
             scopes=p.scopes,
-            login_url=f"/api/v1/auth/oidc/{p.provider_name}/login",
+            login_url=f"/api/v1/auth/oidc/{p.provider_name}/login",  # relative — browser navigates here
         )
         for p in providers
     ]
@@ -117,9 +118,10 @@ async def oidc_login(
         hashlib.sha256(code_verifier.encode()).digest()
     ).rstrip(b"=").decode()
 
-    # Always use the canonical callback URI; store it alongside the verifier
-    # so the callback can reconstruct the exact redirect_uri sent to the IdP.
-    canonical_callback = f"/api/v1/auth/oidc/{provider}/callback"
+    # Construct an absolute callback URI — OIDC providers require a full URL
+    # that matches the registered redirect URI exactly (scheme + host + path).
+    base = settings.PUBLIC_BASE_URL.rstrip("/")
+    canonical_callback = f"{base}/api/v1/auth/oidc/{provider}/callback"
 
     # Store state → (code_verifier, redirect_uri) in Redis with TTL
     try:
@@ -175,7 +177,8 @@ async def oidc_callback(
 
     # Retrieve code_verifier and stored redirect_uri from Redis
     code_verifier = None
-    callback_uri = f"/api/v1/auth/oidc/{provider}/callback"
+    _base = settings.PUBLIC_BASE_URL.rstrip("/")
+    callback_uri = f"{_base}/api/v1/auth/oidc/{provider}/callback"
     try:
         import json as _json
         redis = await get_redis()

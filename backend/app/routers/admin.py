@@ -12,18 +12,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.rbac import APIToken, OrgUser
+from app.services.rbac import rbac_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
 
 
-def _require_admin(username: str = Depends(get_current_user)) -> str:
-    """
-    Provide the authenticated username for admin-protected routes.
-    
+async def _require_admin(
+    db: AsyncSession = Depends(get_db),
+    username: str = Depends(get_current_user),
+) -> str:
+    """Reject non-admin authenticated users from admin endpoints.
+
     Returns:
-        username (str): The authenticated user's username to be used for admin authorization.
+        username (str): The authenticated admin's username.
+
+    Raises:
+        HTTPException: 403 if the user does not have the admin role.
     """
+    if not await rbac_service.has_role(db, username, "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
     return username
 
 

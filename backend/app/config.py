@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     KAFKA_TOPIC: str = "siemless-events"
     KAFKA_GROUP_ID: str = "siemless-consumer"
 
+    # Public base URL — required for OIDC absolute redirect URIs.
+    # Must include scheme and host, e.g. https://siem.example.com
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def normalise_db_url(cls, v: str) -> str:
