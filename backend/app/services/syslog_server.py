@@ -154,6 +154,7 @@ class SyslogServer:
             transport, _ = await loop.create_datagram_endpoint(
                 lambda: SyslogUDPProtocol(self._queue),
                 local_addr=(host, port),
+                reuse_port=True,
             )
             self._udp_transport = transport  # type: ignore[assignment]
             logger.info("Syslog UDP server listening on %s:%d", host, port)
@@ -170,6 +171,7 @@ class SyslogServer:
                 lambda r, w: self._handle_tcp_client(r, w),
                 host=host,
                 port=port,
+                reuse_port=True,
             )
             logger.info("Syslog TCP server listening on %s:%d", host, port)
         except OSError as exc:
