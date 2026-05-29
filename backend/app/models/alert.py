@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -55,6 +56,11 @@ class Alert(Base):
         DateTime(timezone=True), nullable=True
     )
     assigned_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Deduplication and risk scoring
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dedup_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
 
     # SLA tracking
     escalated_at: Mapped[datetime | None] = mapped_column(

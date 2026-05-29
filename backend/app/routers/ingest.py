@@ -1,25 +1,17 @@
 """
 Ingest router: accepts events via JSON, batch, raw log string, or file upload.
 """
-import asyncio
 import logging
-import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_, select
 
 from app.database import get_db
 from app.models.event import SecurityEvent
-from app.models.rule import CorrelationRule
-from app.models.watchlist import WatchlistEntry
 from app.schemas.event import BatchIngest, RawLogIngest, SecurityEventCreate, SecurityEventRead
-from app.services.alerting import alert_service
-from app.services.correlation import correlation_engine
+from app.services.event_store import store_event
 from app.services.log_parser import LogParser
-from app.services.threat_intel import threat_intel_service
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 logger = logging.getLogger(__name__)
@@ -27,97 +19,19 @@ logger = logging.getLogger(__name__)
 _parser = LogParser()
 
 
-async def _safe_send_alert(alert, rule) -> None:
-    """Wrapper so background alert tasks log exceptions instead of silently dying."""
-    try:
-        await alert_service.send_alert(alert, rule)
-    except Exception as exc:
-        logger.error("Background alert dispatch failed for alert %s: %s", alert.id, exc)
-
-
-async def _enrich_from_watchlist(db: AsyncSession, event_dict: dict) -> dict:
-    """Add watchlist tags to events whose source_ip or user appears in the watchlist."""
-    try:
-        candidates: list[tuple[str, str]] = []
-        if event_dict.get("source_ip"):
-            candidates.append(("ip", event_dict["source_ip"]))
-        if event_dict.get("user"):
-            candidates.append(("user", event_dict["user"]))
-
-        if not candidates:
-            return event_dict
-
-        conditions = [
-            (WatchlistEntry.entry_type == t) & (WatchlistEntry.value == v)
-            for t, v in candidates
-        ]
-        result = await db.execute(
-            select(WatchlistEntry).where(or_(*conditions))
-        )
-        matches = result.scalars().all()
-        if matches:
-            existing_tags: list[str] = list(event_dict.get("tags") or [])
-            new_tags = {"watchlist-match"}
-            for m in matches:
-                new_tags.add(f"watchlist:{m.entry_type}:{m.value}")
-                for t in (m.tags or []):
-                    new_tags.add(t)
-            event_dict["tags"] = existing_tags + [t for t in new_tags if t not in existing_tags]
-    except Exception as exc:
-        logger.debug("Watchlist enrichment error: %s", exc)
-    return event_dict
-
-
+# Keep a thin local alias for backward-compat in case anything imports _store_event
 async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_source: str = "api") -> SecurityEvent:
-    """Persist a single event and run correlation."""
-    now = datetime.now(timezone.utc)
-
-    event_dict = event_data.model_dump()
-    event_dict = await threat_intel_service.enrich_event(db, event_dict)
-    event_dict = await _enrich_from_watchlist(db, event_dict)
-
-    event = SecurityEvent(
-        id=uuid.uuid4(),
-        timestamp=event_dict.get("timestamp") or now,
-        received_at=now,
-        source_ip=event_dict.get("source_ip"),
-        destination_ip=event_dict.get("destination_ip"),
-        source_port=event_dict.get("source_port"),
-        destination_port=event_dict.get("destination_port"),
-        hostname=event_dict.get("hostname"),
-        log_source=event_dict.get("log_source") or log_source,
-        log_type=event_dict.get("log_type", "generic"),
-        severity=event_dict.get("severity", "low"),
-        category=event_dict.get("category", "system"),
-        message=event_dict.get("message"),
-        raw_log=event_dict.get("raw_log"),
-        parsed_fields=event_dict.get("parsed_fields"),
-        tags=event_dict.get("tags"),
-        country=event_dict.get("country"),
-        user=event_dict.get("user"),
-        process=event_dict.get("process"),
-        action=event_dict.get("action"),
-    )
-
-    db.add(event)
-    await db.flush()
-
-    # Run correlation engine; dispatch alert notifications as a background task
-    # using _safe_send_alert so any notification failures are logged, not swallowed.
-    # Alert notification tasks fire after the outer db.commit() in the calling route,
-    # which is the correct ordering — events are visible in the DB before notifications fire.
-    try:
-        alerts = await correlation_engine.evaluate_event(db, event)
-        for alert in alerts:
-            rule_result = await db.execute(
-                select(CorrelationRule).where(CorrelationRule.id == alert.rule_id)
-            )
-            rule = rule_result.scalar_one_or_none()
-            asyncio.create_task(_safe_send_alert(alert, rule))
-    except Exception as exc:
-        logger.warning("Correlation error for event %s: %s", event.id, exc)
-
-    return event
+    """
+    Store a normalized security event and return the persisted event record.
+    
+    Parameters:
+        event_data (SecurityEventCreate): Normalized security event payload to persist.
+        log_source (str): Identifier of the event's origin (defaults to "api").
+    
+    Returns:
+        SecurityEvent: The persisted security event with database-populated fields (for example, identifiers and timestamps).
+    """
+    return await store_event(db, event_data, log_source)
 
 
 @router.post(

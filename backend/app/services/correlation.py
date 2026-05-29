@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.alert import Alert
 from app.models.event import SecurityEvent
 from app.models.rule import CorrelationRule
+from app.services.risk_aggregation import risk_aggregation_service
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,22 @@ class CorrelationEngine:
         event_ids: list[str],
         group_value: str,
     ) -> Alert:
+        """
+        Create or update a correlation Alert for a rule-triggering event, using a deduplication key based on the rule and group.
+        
+        If an open (not `resolved` or `false_positive`) alert exists with the deduplication key `"{rule.id}:{group_value}"`, increment its `hit_count`, merge new `event_ids` (avoiding duplicates), recompute its `risk_score`, update rule trigger statistics, persist changes, and return the existing alert. If no such alert exists, create a new `Alert` populated from the rule and event, compute its `risk_score`, update rule trigger statistics, persist the new alert, and return it.
+        
+        Parameters:
+            db (AsyncSession): Database session used to query and persist alerts and rule state.
+            rule (CorrelationRule): The correlation rule that triggered.
+            event (SecurityEvent): The event that caused the rule to trigger.
+            count (int): Number of matching events in the rule's time window.
+            event_ids (list[str]): IDs of events contributing to the threshold being met.
+            group_value (str): The grouping value used for deduplication (e.g., source IP or "__all__").
+        
+        Returns:
+            Alert: The existing deduplicated alert updated, or the newly created alert.
+        """
         title = rule.alert_title_template.format(
             rule_name=rule.name,
             count=count,
@@ -243,6 +260,42 @@ class CorrelationEngine:
         source_ips = [str(event.source_ip)] if event.source_ip else []
         affected_users = [str(event.user)] if event.user else []
 
+        # Compute dedup key for this (rule, group) combination
+        dedup_key = f"{rule.id}:{group_value}"
+
+        # Check for existing non-resolved/non-fp alert with same dedup key
+        existing_result = await db.execute(
+            select(Alert).where(
+                Alert.dedup_key == dedup_key,
+                Alert.status.notin_(["resolved", "false_positive"]),
+            ).limit(1)
+        )
+        existing_alert = existing_result.scalar_one_or_none()
+
+        if existing_alert is not None:
+            # Increment hit_count and recalculate risk_score
+            existing_alert.hit_count = (existing_alert.hit_count or 1) + 1
+            # Merge new event IDs
+            existing_ids = list(existing_alert.event_ids or [])
+            for eid in event_ids:
+                if eid not in existing_ids:
+                    existing_ids.append(eid)
+            existing_alert.event_ids = existing_ids
+            existing_alert.risk_score = risk_aggregation_service.compute_alert_risk_score(existing_alert)
+            db.add(existing_alert)
+
+            # Update rule statistics
+            rule.last_triggered = datetime.now(timezone.utc)
+            rule.trigger_count = (rule.trigger_count or 0) + 1
+            db.add(rule)
+
+            await db.flush()
+            logger.info(
+                "Deduped alert '%s' (hit_count=%d) from rule '%s'",
+                existing_alert.title, existing_alert.hit_count, rule.name,
+            )
+            return existing_alert
+
         alert = Alert(
             id=uuid.uuid4(),
             title=title,
@@ -255,7 +308,10 @@ class CorrelationEngine:
             affected_users=affected_users,
             mitre_tactic=rule.mitre_tactic,
             mitre_technique=rule.mitre_technique,
+            hit_count=1,
+            dedup_key=dedup_key,
         )
+        alert.risk_score = risk_aggregation_service.compute_alert_risk_score(alert)
         db.add(alert)
 
         # Update rule statistics
@@ -265,6 +321,7 @@ class CorrelationEngine:
 
         await db.flush()
         logger.info("Created alert '%s' from rule '%s'", title, rule.name)
+
         return alert
 
     # -----------------------------------------------------------------------

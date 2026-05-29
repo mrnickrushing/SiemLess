@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Eye, EyeOff } from 'lucide-react';
-import { login } from '../api/auth';
+import { ShieldCheck, Eye, EyeOff, LogIn } from 'lucide-react';
+import { login, getSSOProviders, initiateSSOLogin, type SSOProvider } from '../api/auth';
 import { checkBackendHealth } from '../api/stats';
 
 interface Props {
   onSuccess?: (username: string) => void;
 }
 
+/**
+ * Render the login page UI and manage username/password and SSO sign-in flows.
+ *
+ * The component displays backend health, a username/password form with password visibility toggle,
+ * and an optional list of SSO provider buttons when available.
+ *
+ * @param onSuccess - Optional callback invoked after a successful username/password login with the authenticated username
+ * @returns The rendered login page element
+ */
 export default function Login({ onSuccess }: Props) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('admin');
@@ -16,9 +25,11 @@ export default function Login({ onSuccess }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
+  const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
 
   useEffect(() => {
     checkBackendHealth().then(setBackendOk);
+    getSSOProviders().then(setSsoProviders);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,6 +124,31 @@ export default function Login({ onSuccess }: Props) {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+
+          {ssoProviders.length > 0 && (
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-700" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-[#1a1f2e] px-2 text-gray-500">Or sign in with</span>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {ssoProviders.map((provider) => (
+                  <button
+                    key={provider.provider_name}
+                    onClick={() => initiateSSOLogin(provider.provider_name)}
+                    className="w-full flex items-center justify-center gap-2 bg-[#0f1117] border border-gray-700 hover:border-[#2dd4aa]/50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <LogIn size={16} className="text-[#2dd4aa]" />
+                    Sign in with {provider.provider_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,9 +1,12 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 
@@ -21,33 +24,67 @@ def create_access_token(subject: str) -> str:
     )
 
 
-def _decode_token(token: str) -> str:
+def _try_decode_jwt(token: str) -> Optional[str]:
+    """Return username from a valid JWT, or None if it is not a JWT."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        username: str = payload.get("sub", "")
-        if not username:
-            raise JWTError("missing sub")
-        return username
+        return payload.get("sub") or None
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return None
 
 
-def get_current_user(
+async def _lookup_api_token(token: str) -> Optional[str]:
+    """Return the username associated with a raw API token, or None."""
+    from app.database import AsyncSessionLocal
+    from app.models.rbac import APIToken
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(APIToken).where(APIToken.token_hash == token_hash)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+                return None
+            return row.username
+    except Exception:
+        return None
+
+
+async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> str:
-    # Prefer Bearer header (Swagger / API clients), fall back to httpOnly cookie
+    """Authenticate via JWT (cookie or Bearer header) or a hashed API token."""
+    raw_token: Optional[str] = None
+
     if credentials:
-        return _decode_token(credentials.credentials)
-    token = request.cookies.get("access_token")
-    if token:
-        return _decode_token(token)
+        raw_token = credentials.credentials
+    else:
+        raw_token = request.cookies.get("access_token")
+
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Try JWT first (fast path — no DB hit)
+    username = _try_decode_jwt(raw_token)
+    if username:
+        return username
+
+    # Fall back to API token lookup (DB hit, but only when JWT decode fails)
+    username = await _lookup_api_token(raw_token)
+    if username:
+        return username
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Not authenticated",
+        detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )

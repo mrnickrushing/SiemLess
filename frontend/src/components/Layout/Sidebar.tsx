@@ -19,6 +19,12 @@ import {
   Keyboard,
   Sun,
   Moon,
+  Briefcase,
+  ShieldCheck,
+  Brain,
+  Cloud,
+  Zap,
+  Monitor,
 } from 'lucide-react';
 import { checkBackendHealth } from '../../api/stats';
 import { getAlerts } from '../../api/alerts';
@@ -43,6 +49,12 @@ const BASE_NAV: Omit<NavItem, 'badge'>[] = [
   { to: '/threat-intel', icon: <Crosshair       className="w-5 h-5" />, label: 'Threat Intel',  hint: 'g t' },
   { to: '/mitre',        icon: <Target          className="w-5 h-5" />, label: 'MITRE ATT&CK',  hint: 'g m' },
   { to: '/watchlist',    icon: <List            className="w-5 h-5" />, label: 'Watchlist',     hint: 'g w' },
+  { to: '/cases',        icon: <Briefcase       className="w-5 h-5" />, label: 'Cases' },
+  { to: '/compliance',   icon: <ShieldCheck     className="w-5 h-5" />, label: 'Compliance' },
+  { to: '/ueba',         icon: <Brain           className="w-5 h-5" />, label: 'UEBA' },
+  { to: '/connectors',   icon: <Cloud           className="w-5 h-5" />, label: 'Connectors' },
+  { to: '/playbooks',    icon: <Zap             className="w-5 h-5" />, label: 'Playbooks' },
+  { to: '/assets',       icon: <Monitor         className="w-5 h-5" />, label: 'Assets' },
   { to: '/settings',     icon: <Settings        className="w-5 h-5" />, label: 'Settings' },
 ];
 

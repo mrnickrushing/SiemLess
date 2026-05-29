@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
+    Float,
     JSON,
     DateTime,
     Index,
@@ -71,6 +73,12 @@ class SecurityEvent(Base):
     action: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # allow, deny, failed, success
+
+    # Risk score (0-100) computed at ingest time
+    risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+
+    # ECS-lite normalized fields
+    normalized_fields: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("ix_security_events_timestamp_severity", "timestamp", "severity"),

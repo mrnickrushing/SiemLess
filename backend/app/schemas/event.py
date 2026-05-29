@@ -56,6 +56,8 @@ class SecurityEventRead(BaseModel):
     user: Optional[str] = None
     process: Optional[str] = None
     action: Optional[str] = None
+    risk_score: Optional[float] = None
+    normalized_fields: Optional[dict[str, Any]] = None
 
 
 class SecurityEventList(BaseModel):
