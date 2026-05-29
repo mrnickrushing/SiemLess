@@ -99,7 +99,7 @@ app.add_middleware(
 # API routers  (all prefixed under /api)
 # ---------------------------------------------------------------------------
 
-_API_PREFIX = "/api"
+_API_PREFIX = "/api/v1"
 
 app.include_router(auth.router, prefix=_API_PREFIX)
 app.include_router(events.router, prefix=_API_PREFIX)
