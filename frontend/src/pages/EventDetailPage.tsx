@@ -196,14 +196,14 @@ const EventDetailPage: React.FC = () => {
           )}
 
           {/* Tags */}
-          {event.tags.length > 0 && (
+          {(event.tags ?? []).length > 0 && (
             <div className="cyber-card p-6">
               <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5" />
                 Tags
               </h2>
               <div className="flex flex-wrap gap-2">
-                {event.tags.map((tag) => (
+                {(event.tags ?? []).map((tag) => (
                   <span key={tag} className="text-xs px-2 py-1 bg-cyber-border/40 text-cyber-muted border border-cyber-border/50 rounded font-mono">
                     {tag}
                   </span>

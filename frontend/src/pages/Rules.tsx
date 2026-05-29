@@ -353,7 +353,7 @@ const Rules: React.FC = () => {
             <AlertTriangle className="w-8 h-8 text-cyber-danger mx-auto mb-2" />
             <p className="text-cyber-danger">{(error as Error).message}</p>
           </div>
-        ) : data?.items.length === 0 ? (
+        ) : data?.items?.length === 0 ? (
           <EmptyState
             title="No rules configured"
             description="Create your first correlation rule to start detecting security threats."

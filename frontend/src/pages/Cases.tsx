@@ -582,7 +582,7 @@ const Cases: React.FC = () => {
               <RefreshCw className="w-5 h-5 animate-spin" />
             </div>
           )}
-          {!isLoading && !data?.items.length && (
+          {!isLoading && !data?.items?.length && (
             <div className="text-center py-12">
               <Briefcase className="w-8 h-8 text-cyber-muted/30 mx-auto mb-2" />
               <p className="text-sm text-cyber-muted">No cases found</p>
