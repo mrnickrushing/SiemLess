@@ -249,12 +249,15 @@ def _pb_to_dict(pb: Playbook) -> dict:
         "name": pb.name,
         "description": pb.description,
         "trigger_type": pb.trigger_type,
+        "trigger_on": pb.trigger_type,
         "trigger_config": pb.trigger_config,
-        "steps": pb.steps,
+        "steps": pb.steps or [],
         "enabled": pb.enabled,
         "run_count": pb.run_count,
         "created_at": pb.created_at.isoformat(),
         "last_triggered_at": pb.last_triggered_at.isoformat() if pb.last_triggered_at else None,
+        "last_run_at": pb.last_triggered_at.isoformat() if pb.last_triggered_at else None,
+        "updated_at": pb.created_at.isoformat(),
     }
 
 
@@ -287,4 +290,5 @@ def _run_to_dict(r: PlaybookRun) -> dict:
         "status": r.status,
         "step_results": r.step_results,
         "error_message": r.error_message,
+        "error": r.error_message,
     }

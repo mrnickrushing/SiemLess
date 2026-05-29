@@ -217,7 +217,7 @@ const Connectors: React.FC = () => {
             <RefreshCw className="w-5 h-5 animate-spin" />
           </div>
         )}
-        {!isLoading && !data?.items.length && (
+        {!isLoading && !data?.items?.length && (
           <div className="text-center py-12">
             <Cloud className="w-10 h-10 text-cyber-muted/30 mx-auto mb-3" />
             <p className="text-sm text-cyber-muted">No connectors configured</p>

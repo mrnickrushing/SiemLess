@@ -76,7 +76,7 @@ export async function getMe(): Promise<string | null> {
 export async function getSSOProviders(): Promise<SSOProvider[]> {
   try {
     const { data } = await client.get('/auth/oidc/providers');
-    return data as SSOProvider[];
+    return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }

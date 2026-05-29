@@ -119,14 +119,14 @@ const SSOSection: React.FC = () => {
   const { data: configs } = useQuery<SSOConfig[]>({
     queryKey: ['sso-configs'],
     queryFn: async () => {
-      const res = await client.get('/auth/sso/configs');
+      const res = await client.get('/auth/oidc/configs');
       return res.data;
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof form) => {
-      const res = await client.post('/auth/sso/configs', data);
+      const res = await client.post('/auth/oidc/configs', data);
       return res.data;
     },
     onSuccess: () => {
@@ -139,14 +139,14 @@ const SSOSection: React.FC = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await client.delete(`/auth/sso/configs/${id}`);
+      await client.delete(`/auth/oidc/configs/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sso-configs'] }),
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await client.patch(`/auth/sso/configs/${id}`, { enabled });
+      await client.patch(`/auth/oidc/configs/${id}`, { enabled });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sso-configs'] }),
   });
@@ -250,7 +250,9 @@ const UsersSection: React.FC = () => {
     queryKey: ['org-users'],
     queryFn: async () => {
       const res = await client.get('/admin/users');
-      return res.data;
+      const data = res.data;
+      if (Array.isArray(data)) return { items: data, total: data.length };
+      return data;
     },
   });
 
@@ -267,13 +269,13 @@ const UsersSection: React.FC = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { await client.delete(`/admin/users/${id}`); },
+    mutationFn: async (username: string) => { await client.delete(`/admin/users/${username}`); },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org-users'] }),
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: string }) => {
-      await client.patch(`/admin/users/${id}`, { role });
+    mutationFn: async ({ username, role }: { username: string; role: string }) => {
+      await client.patch(`/admin/users/${username}`, { role });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org-users'] }),
   });
@@ -325,10 +327,10 @@ const UsersSection: React.FC = () => {
       )}
 
       <div className="divide-y divide-cyber-border/30">
-        {!users?.items.length && !showForm && (
+        {!users?.items?.length && !showForm && (
           <p className="text-xs text-cyber-muted text-center py-6">No additional users configured.</p>
         )}
-        {users?.items.map((user) => (
+        {users?.items?.map((user) => (
           <div key={user.id} className="flex items-center gap-4 px-5 py-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-cyber-text">{user.username}</p>
@@ -337,13 +339,13 @@ const UsersSection: React.FC = () => {
             <select
               className="cyber-input text-xs"
               value={user.role}
-              onChange={(e) => updateRoleMutation.mutate({ id: user.id, role: e.target.value })}
+              onChange={(e) => updateRoleMutation.mutate({ username: user.username, role: e.target.value })}
             >
               <option value="analyst">Analyst</option>
               <option value="admin">Admin</option>
               <option value="read_only">Read Only</option>
             </select>
-            <button onClick={() => confirm(`Remove user "${user.username}"?`) && deleteMutation.mutate(user.id)}
+            <button onClick={() => confirm(`Remove user "${user.username}"?`) && deleteMutation.mutate(user.username)}
               className="text-cyber-muted hover:text-cyber-danger">
               <X className="w-4 h-4" />
             </button>
@@ -367,7 +369,9 @@ const APITokensSection: React.FC = () => {
     queryKey: ['api-tokens'],
     queryFn: async () => {
       const res = await client.get('/admin/tokens');
-      return res.data;
+      const data = res.data;
+      if (Array.isArray(data)) return { items: data, total: data.length };
+      return data;
     },
   });
 
@@ -452,10 +456,10 @@ const APITokensSection: React.FC = () => {
       )}
 
       <div className="divide-y divide-cyber-border/30">
-        {!tokens?.items.length && !showForm && (
+        {!tokens?.items?.length && !showForm && (
           <p className="text-xs text-cyber-muted text-center py-6">No API tokens issued.</p>
         )}
-        {tokens?.items.map((token) => (
+        {tokens?.items?.map((token) => (
           <div key={token.id} className="flex items-center gap-4 px-5 py-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-cyber-text">{token.description ?? 'Unnamed token'}</p>
@@ -493,7 +497,9 @@ const IntegrationsSection: React.FC = () => {
     queryKey: ['integrations'],
     queryFn: async () => {
       const res = await client.get('/integrations');
-      return res.data;
+      const data = res.data;
+      if (Array.isArray(data)) return { items: data, total: data.length };
+      return data;
     },
   });
 
@@ -570,10 +576,10 @@ const IntegrationsSection: React.FC = () => {
       )}
 
       <div className="divide-y divide-cyber-border/30">
-        {!integrations?.items.length && !showForm && (
+        {!integrations?.items?.length && !showForm && (
           <p className="text-xs text-cyber-muted text-center py-6">No integrations configured.</p>
         )}
-        {integrations?.items.map((integ) => (
+        {integrations?.items?.map((integ) => (
           <div key={integ.id} className="flex items-center gap-4 px-5 py-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-cyber-text">{integ.name}</p>
@@ -606,7 +612,9 @@ const ThreatFeedsSection: React.FC = () => {
     queryKey: ['threat-feeds'],
     queryFn: async () => {
       const res = await client.get('/threat-feeds');
-      return res.data;
+      const data = res.data;
+      if (Array.isArray(data)) return { items: data, total: data.length };
+      return data;
     },
   });
 
@@ -692,10 +700,10 @@ const ThreatFeedsSection: React.FC = () => {
       )}
 
       <div className="divide-y divide-cyber-border/30">
-        {!feeds?.items.length && !showForm && (
+        {!feeds?.items?.length && !showForm && (
           <p className="text-xs text-cyber-muted text-center py-6">No threat feeds configured.</p>
         )}
-        {feeds?.items.map((feed) => (
+        {feeds?.items?.map((feed) => (
           <div key={feed.id} className="flex items-center gap-4 px-5 py-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-cyber-text">{feed.name}</p>
