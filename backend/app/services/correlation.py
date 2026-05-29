@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.alert import Alert
 from app.models.event import SecurityEvent
 from app.models.rule import CorrelationRule
+from app.services.risk_aggregation import risk_aggregation_service
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,42 @@ class CorrelationEngine:
         source_ips = [str(event.source_ip)] if event.source_ip else []
         affected_users = [str(event.user)] if event.user else []
 
+        # Compute dedup key for this (rule, group) combination
+        dedup_key = f"{rule.id}:{group_value}"
+
+        # Check for existing non-resolved/non-fp alert with same dedup key
+        existing_result = await db.execute(
+            select(Alert).where(
+                Alert.dedup_key == dedup_key,
+                Alert.status.notin_(["resolved", "false_positive"]),
+            ).limit(1)
+        )
+        existing_alert = existing_result.scalar_one_or_none()
+
+        if existing_alert is not None:
+            # Increment hit_count and recalculate risk_score
+            existing_alert.hit_count = (existing_alert.hit_count or 1) + 1
+            # Merge new event IDs
+            existing_ids = list(existing_alert.event_ids or [])
+            for eid in event_ids:
+                if eid not in existing_ids:
+                    existing_ids.append(eid)
+            existing_alert.event_ids = existing_ids
+            existing_alert.risk_score = risk_aggregation_service.compute_alert_risk_score(existing_alert)
+            db.add(existing_alert)
+
+            # Update rule statistics
+            rule.last_triggered = datetime.now(timezone.utc)
+            rule.trigger_count = (rule.trigger_count or 0) + 1
+            db.add(rule)
+
+            await db.flush()
+            logger.info(
+                "Deduped alert '%s' (hit_count=%d) from rule '%s'",
+                existing_alert.title, existing_alert.hit_count, rule.name,
+            )
+            return existing_alert
+
         alert = Alert(
             id=uuid.uuid4(),
             title=title,
@@ -255,7 +292,10 @@ class CorrelationEngine:
             affected_users=affected_users,
             mitre_tactic=rule.mitre_tactic,
             mitre_technique=rule.mitre_technique,
+            hit_count=1,
+            dedup_key=dedup_key,
         )
+        alert.risk_score = risk_aggregation_service.compute_alert_risk_score(alert)
         db.add(alert)
 
         # Update rule statistics
@@ -265,6 +305,20 @@ class CorrelationEngine:
 
         await db.flush()
         logger.info("Created alert '%s' from rule '%s'", title, rule.name)
+
+        # Trigger playbook evaluation in background (non-blocking)
+        try:
+            from app.database import AsyncSessionLocal
+            from app.services.playbook_engine import playbook_engine
+
+            async def _run_playbooks():
+                async with AsyncSessionLocal() as _db:
+                    await playbook_engine.evaluate_alert(_db, alert)
+
+            asyncio.create_task(_run_playbooks())
+        except Exception as _exc:
+            logger.debug("Playbook evaluation task creation failed: %s", _exc)
+
         return alert
 
     # -----------------------------------------------------------------------

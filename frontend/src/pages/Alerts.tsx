@@ -352,6 +352,23 @@ const Alerts: React.FC = () => {
                     <span>Assigned:</span><span className="text-cyber-text">{alert.assigned_to}</span>
                   </div>
                 )}
+                {alert.hit_count != null && alert.hit_count > 1 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-900/40 text-orange-400 border border-orange-700/40">
+                    ×{alert.hit_count}
+                  </span>
+                )}
+                {alert.risk_score != null && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="text-cyber-muted">Risk:</span>
+                    <div className="w-16 h-1.5 rounded-full bg-cyber-border/40 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${alert.risk_score >= 75 ? 'bg-red-500' : alert.risk_score >= 50 ? 'bg-orange-400' : 'bg-yellow-400'}`}
+                        style={{ width: `${Math.min(100, alert.risk_score)}%` }}
+                      />
+                    </div>
+                    <span className="text-cyber-text font-mono">{alert.risk_score.toFixed(0)}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 text-xs text-cyber-muted ml-auto">
                   <Hash className="w-3 h-3" />{alert.event_count} events
                 </div>

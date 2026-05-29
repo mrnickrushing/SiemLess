@@ -53,6 +53,9 @@ class AlertRead(BaseModel):
     assigned_to: Optional[str] = None
     escalated_at: Optional[datetime] = None
     sla_breach_at: Optional[datetime] = None
+    hit_count: int = 1
+    risk_score: Optional[float] = None
+    dedup_key: Optional[str] = None
 
 
 class AlertList(BaseModel):

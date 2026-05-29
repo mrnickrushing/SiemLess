@@ -24,6 +24,8 @@ export interface SecurityEvent {
   ingested_at: string;
   mitre_tactic: string | null;
   mitre_technique: string | null;
+  risk_score?: number;
+  normalized_fields?: Record<string, unknown> | null;
 }
 
 export interface Alert {
@@ -49,6 +51,9 @@ export interface Alert {
   event_count: number;
   escalated_at: string | null;
   sla_breach_at: string | null;
+  hit_count?: number;
+  risk_score?: number;
+  dedup_key?: string;
 }
 
 export interface SavedSearch {
