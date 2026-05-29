@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO, subDays } from 'date-fns';
-import { Filter, RefreshCw, Play, Pause, Tag } from 'lucide-react';
+import { Filter, RefreshCw, Play, Pause, Tag, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getEvents, getEventCategories, getEventLogTypes } from '../api/events';
+import { useQueryClient } from '@tanstack/react-query';
+import api from '../api/client';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { TableSkeleton } from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
@@ -14,6 +16,8 @@ const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 const Events: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [clearing, setClearing] = useState(false);
   const [filters, setFilters] = useState<EventFilters>({
     page: 1,
     page_size: 50,
@@ -80,6 +84,17 @@ const Events: React.FC = () => {
     }
   };
 
+  const clearAllEvents = async () => {
+    if (!window.confirm('Delete ALL events? This cannot be undone.')) return;
+    setClearing(true);
+    try {
+      await api.delete('/events');
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const setQuickRange = (hours: number) => {
     const end = new Date();
     const start = subDays(end, hours / 24);
@@ -115,6 +130,14 @@ const Events: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
             Refresh
+          </button>
+          <button
+            onClick={clearAllEvents}
+            disabled={clearing}
+            className="flex items-center gap-2 px-3 py-2 rounded-md border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-sm transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" />
+            {clearing ? 'Clearing...' : 'Clear All'}
           </button>
         </div>
       </div>

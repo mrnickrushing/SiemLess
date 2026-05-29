@@ -184,6 +184,17 @@ async def get_event(
 
 
 @router.delete(
+    "",
+    status_code=status.HTTP_200_OK,
+    summary="Delete all security events",
+)
+async def delete_all_events(db: AsyncSession = Depends(get_db)) -> dict:
+    result = await db.execute(delete(SecurityEvent))
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
+@router.delete(
     "/{event_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a security event",
