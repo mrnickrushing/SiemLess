@@ -34,6 +34,12 @@ const CVSS_COLOR = (score: number) => {
   return 'text-blue-400';
 };
 
+/**
+ * Formats an ISO 8601 timestamp into a localized short date and time string.
+ *
+ * @param iso - An ISO 8601 date-time string.
+ * @returns The localized date and time using short month, numeric day, and two-digit hour and minute.
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',

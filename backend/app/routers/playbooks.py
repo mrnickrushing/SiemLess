@@ -21,6 +21,22 @@ async def list_playbooks(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> list:
+    """
+    List all playbooks and return them as serialized dictionaries.
+    
+    Returns:
+        list[dict]: A list of playbook dictionaries. Each dictionary contains:
+            - id: playbook UUID string
+            - name: playbook name
+            - description: optional description
+            - trigger_type: trigger type string
+            - trigger_config: trigger configuration object
+            - steps: list of step definitions
+            - enabled: boolean flag
+            - run_count: integer count of runs
+            - created_at: ISO 8601 timestamp string
+            - last_triggered_at: ISO 8601 timestamp string or None
+    """
     result = await db.execute(select(Playbook))
     return [_pb_to_dict(p) for p in result.scalars()]
 
@@ -31,6 +47,21 @@ async def create_playbook(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Create a new playbook record from the provided payload and return its serialized representation.
+    
+    Parameters:
+        payload (dict): Playbook attributes. Recognized keys:
+            - `name` (str): Playbook name; defaults to `"Unnamed Playbook"`.
+            - `description` (str | None): Optional human-readable description.
+            - `trigger_type` (str): Trigger mechanism; defaults to `"manual"`.
+            - `trigger_config` (dict): Trigger configuration; defaults to an empty dict.
+            - `steps` (list): Ordered list of step definitions; defaults to an empty list.
+            - `enabled` (bool): Whether the playbook is active; defaults to `True`.
+    
+    Returns:
+        dict: Serialized playbook including `id`, `name`, `description`, `trigger_type`, `trigger_config`, `steps`, `enabled`, `run_count`, `created_at`, and `last_triggered_at`.
+    """
     pb = Playbook(
         id=str(uuid.uuid4()),
         name=payload.get("name", "Unnamed Playbook"),
@@ -52,6 +83,15 @@ async def get_playbook(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Retrieve a single playbook by ID and return its serialized dictionary representation.
+    
+    Returns:
+        dict: Serialized playbook with keys `id`, `name`, `description`, `trigger_type`, `trigger_config`, `steps`, `enabled`, `run_count`, `created_at` (ISO string), and `last_triggered_at` (ISO string or `None`).
+    
+    Raises:
+        HTTPException: 404 if no playbook exists with the given `playbook_id`.
+    """
     result = await db.execute(select(Playbook).where(Playbook.id == playbook_id))
     pb = result.scalar_one_or_none()
     if pb is None:
@@ -66,6 +106,20 @@ async def update_playbook(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Update fields of an existing playbook.
+    
+    Parameters:
+        playbook_id (str): Identifier of the playbook to update.
+        payload (dict): Partial mapping of fields to update. Accepted keys:
+            "name", "description", "trigger_type", "trigger_config", "steps", "enabled".
+    
+    Returns:
+        dict: Serialized representation of the updated playbook.
+    
+    Raises:
+        HTTPException: 404 if a playbook with `playbook_id` does not exist.
+    """
     result = await db.execute(select(Playbook).where(Playbook.id == playbook_id))
     pb = result.scalar_one_or_none()
     if pb is None:
@@ -84,6 +138,17 @@ async def delete_playbook(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> None:
+    """
+    Delete a playbook by its ID.
+    
+    Removes the matching playbook record from the database and commits the change.
+    
+    Parameters:
+        playbook_id (str): The UUID string identifier of the playbook to delete.
+    
+    Raises:
+        HTTPException: status 404 if no playbook with the given ID exists.
+    """
     result = await db.execute(select(Playbook).where(Playbook.id == playbook_id))
     pb = result.scalar_one_or_none()
     if pb is None:
@@ -100,6 +165,17 @@ async def get_runs(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Return paginated run history for the specified playbook.
+    
+    Parameters:
+    	playbook_id (str): ID of the playbook whose runs are requested.
+    	page (int): 1-based page number to retrieve.
+    	page_size (int): Maximum number of runs to include on a page (1–100).
+    
+    Returns:
+    	dict: Mapping with keys `"total"` (total number of runs) and `"items"` (list of run dictionaries as returned by `_run_to_dict`).
+    """
     from sqlalchemy import func
 
     count_result = await db.execute(
@@ -128,6 +204,18 @@ async def trigger_playbook(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Manually triggers a run of the specified playbook.
+    
+    Parameters:
+        payload (dict): Optional payload for the trigger. May include the key `"alert_id"` to associate the run with an existing alert.
+    
+    Returns:
+        dict: A dictionary containing `"run_id"` (the created run's identifier) and `"status"` set to `"triggered"`.
+    
+    Raises:
+        HTTPException: Raised with status 404 when the playbook cannot be found or the trigger cannot be created.
+    """
     alert_id = payload.get("alert_id")
     try:
         run_id = await playbook_engine.trigger_manual(db, playbook_id, alert_id, username)
@@ -137,6 +225,25 @@ async def trigger_playbook(
 
 
 def _pb_to_dict(pb: Playbook) -> dict:
+    """
+    Serialize a Playbook ORM instance into a JSON-serializable dictionary.
+    
+    Parameters:
+        pb (Playbook): Playbook model instance to serialize.
+    
+    Returns:
+        dict: Mapping with the playbook's fields:
+            - `id`: playbook identifier (string)
+            - `name`: playbook name
+            - `description`: optional description
+            - `trigger_type`: trigger type string
+            - `trigger_config`: trigger configuration object
+            - `steps`: list of step definitions
+            - `enabled`: boolean enabled flag
+            - `run_count`: integer number of runs
+            - `created_at`: ISO 8601 string of creation time
+            - `last_triggered_at`: ISO 8601 string of last triggered time or `None`
+    """
     return {
         "id": pb.id,
         "name": pb.name,
@@ -152,6 +259,24 @@ def _pb_to_dict(pb: Playbook) -> dict:
 
 
 def _run_to_dict(r: PlaybookRun) -> dict:
+    """
+    Convert a PlaybookRun ORM instance into a JSON-serializable dictionary.
+    
+    Parameters:
+        r (PlaybookRun): PlaybookRun ORM instance to serialize.
+    
+    Returns:
+        dict: Dictionary with the playbook run fields:
+            - `id`: run identifier.
+            - `playbook_id`: associated playbook identifier.
+            - `alert_id`: associated alert identifier or `None`.
+            - `triggered_by`: username that triggered the run.
+            - `started_at`: ISO 8601 string of the start time.
+            - `finished_at`: ISO 8601 string of the finish time or `None` if not finished.
+            - `status`: run status.
+            - `step_results`: results for each step.
+            - `error_message`: error message if the run failed, otherwise `None`.
+    """
     return {
         "id": r.id,
         "playbook_id": r.playbook_id,

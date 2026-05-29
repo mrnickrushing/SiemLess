@@ -18,6 +18,17 @@ class AnomalyDetector:
     async def evaluate_event(
         self, db: AsyncSession, event: SecurityEvent
     ) -> Optional[UEBAAnomaly]:
+        """
+        Evaluate a security event against a user's behavior baseline and create a UEBA anomaly record when the computed score meets or exceeds the configured threshold.
+        
+        If the event has no associated user, or the user's profile or its baseline is not available, no evaluation is performed. When an anomaly is created, the function adds a UEBAAnomaly to the database, updates the user's profile last_evaluated_at timestamp, and attempts to commit the transaction (rolling back on commit failure). The anomaly score threshold is read from configuration (`UEBA_ANOMALY_THRESHOLD`) with a default of 60.0 when not configured or on error.
+        
+        Parameters:
+            event (SecurityEvent): The security event to evaluate; must include the event's user identifier and may include timestamp, source_ip, and id used during scoring.
+        
+        Returns:
+            UEBAAnomaly or None: A `UEBAAnomaly` instance describing the detected anomaly (including `anomaly_type`, `score`, and `details`) if the score meets or exceeds the threshold; otherwise `None`.
+        """
         if not event.user:
             return None
 
@@ -100,6 +111,15 @@ class AnomalyDetector:
     async def _get_profile(
         self, db: AsyncSession, username: str
     ) -> Optional[UserBehaviorProfile]:
+        """
+        Fetches the UserBehaviorProfile for the specified username.
+        
+        Parameters:
+            username (str): Username whose behavior profile to retrieve.
+        
+        Returns:
+            UserBehaviorProfile | None: The matching profile if found, `None` otherwise.
+        """
         result = await db.execute(
             select(UserBehaviorProfile).where(UserBehaviorProfile.username == username)
         )
@@ -108,6 +128,16 @@ class AnomalyDetector:
     async def _get_recent_user_events(
         self, db: AsyncSession, username: str, minutes: int = 60
     ) -> list[SecurityEvent]:
+        """
+        Fetch recent SecurityEvent records for a given user within the past `minutes`.
+        
+        Parameters:
+        	username (str): Username whose events to retrieve.
+        	minutes (int): Time window in minutes to look back from now; defaults to 60.
+        
+        Returns:
+        	events (list[SecurityEvent]): Up to 20 SecurityEvent objects for the user with timestamp >= now - minutes.
+        """
         since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         result = await db.execute(
             select(SecurityEvent).where(

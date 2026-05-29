@@ -50,7 +50,14 @@ class AssetDiscoveryService:
             logger.debug("Asset discovery upsert failed: %s", exc)
 
     async def enrich_cves(self, db: AsyncSession, asset_id: str) -> int:
-        """Query NVD API for CVEs for each software entry on this asset."""
+        """
+        Enrich an asset with CVE records by querying the NVD for each installed software CPE.
+        
+        For each AssetSoftware associated with the asset, queries the NVD API by CPE, creates new AssetVulnerability records for discovered CVEs (up to 20 per software) while skipping duplicates, and updates the asset's cve_count. Software entries without a CPE are ignored. Per-software errors are logged and processing continues. The session is committed before returning.
+        
+        Returns:
+            int: Number of newly created AssetVulnerability records.
+        """
         software_result = await db.execute(
             select(AssetSoftware).where(AssetSoftware.asset_id == asset_id)
         )
@@ -130,6 +137,15 @@ class AssetDiscoveryService:
 
 
 def _cvss_to_severity(score: Optional[float]) -> str:
+    """
+    Map a CVSS base score to a severity label.
+    
+    Parameters:
+        score (Optional[float]): CVSS base score (typically 0.0–10.0); may be `None` if unavailable.
+    
+    Returns:
+        str: One of `"unknown"`, `"critical"`, `"high"`, `"medium"`, or `"low"`. `unknown` is returned when `score` is `None`; otherwise the label is determined by the score ranges: >=9.0 → `critical`, >=7.0 → `high`, >=4.0 → `medium`, otherwise `low`.
+    """
     if score is None:
         return "unknown"
     if score >= 9.0:

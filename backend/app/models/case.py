@@ -34,6 +34,12 @@ class Case(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
+        """
+        Return a concise developer-facing representation of the Case instance.
+        
+        Returns:
+            repr_str (str): A string formatted as "<Case id={id} title={title!r} status={status}>".
+        """
         return f"<Case id={self.id} title={self.title!r} status={self.status}>"
 
 

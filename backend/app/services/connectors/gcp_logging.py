@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 class GCPLoggingConnector(BaseConnector):
 
     async def poll(self, db: AsyncSession, since: Optional[datetime] = None) -> int:
+        """
+        Polls Google Cloud Logging for recent log entries and stores each entry as an event in the application's event store.
+        
+        If the google-cloud-logging package is not installed this method returns 0. When `since` is omitted, the default start time is 10 minutes before the current UTC time. Per-entry storage failures are logged and do not abort processing; client creation or retrieval failures raise an exception.
+        
+        Parameters:
+            since (Optional[datetime]): Only fetch entries with a timestamp greater than or equal to this value. Defaults to 10 minutes ago (UTC) when not provided.
+        
+        Returns:
+            int: Number of log entries successfully stored.
+        
+        Raises:
+            Exception: If the GCP logging client cannot be created or entries cannot be retrieved.
+        """
         try:
             from google.cloud import logging as gcp_logging
         except ImportError:

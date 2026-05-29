@@ -26,7 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 async def _enrich_from_watchlist(db: AsyncSession, event_dict: dict) -> dict:
-    """Add watchlist tags to events whose source_ip or user appears in the watchlist."""
+    """
+    Enrich the provided event dictionary with watchlist-derived tags when the event's `source_ip` or `user` matches watchlist entries.
+    
+    Parameters:
+        event_dict (dict): Mutable event data; may contain `source_ip`, `user`, and `tags`.
+    
+    Returns:
+        dict: The same event dictionary, potentially updated with new tags. If matches are found, ensures a base tag `watchlist-match`, adds `watchlist:{entry_type}:{value}` for each match, and includes any tags from matched watchlist entries while avoiding duplicate tags.
+    
+    Notes:
+        - If neither `source_ip` nor `user` are present, the event is returned unchanged.
+        - Exceptions during enrichment are caught and logged at debug level; the function returns the (possibly partially modified) event dictionary in that case.
+    """
     try:
         candidates: list[tuple[str, str]] = []
         if event_dict.get("source_ip"):
@@ -59,7 +71,11 @@ async def _enrich_from_watchlist(db: AsyncSession, event_dict: dict) -> dict:
 
 
 async def _safe_send_alert(alert, rule) -> None:
-    """Wrapper so background alert tasks log exceptions instead of silently dying."""
+    """
+    Call the alert service to send a notification and log any exception instead of letting a background task fail silently.
+    
+    This helper awaits alert_service.send_alert(alert, rule); if an exception occurs it is logged at error level including the alert's id and the exception, and the exception is swallowed.
+    """
     try:
         await alert_service.send_alert(alert, rule)
     except Exception as exc:
@@ -72,11 +88,16 @@ async def store_event(
     log_source: str = "api",
 ) -> SecurityEvent:
     """
-    Persist a single event and run correlation.
-
-    ``event_data`` may be either a ``SecurityEventCreate`` Pydantic schema
-    instance or a plain ``dict`` (for connectors / Kafka that build the dict
-    themselves).
+    Create, enrich, persist a SecurityEvent from incoming data, run correlation, and schedule post-commit alert/playbook processing.
+    
+    The function accepts either a Pydantic-like model (with `model_dump()`) or a plain `dict`, enriches the event with threat intelligence and watchlist tags, normalizes the timestamp (falling back to the current UTC time on missing/invalid values), and constructs a SecurityEvent with sensible defaults. It attempts non-fatal computations for risk score and ECS-normalized fields, conditionally triggers asset discovery and schedules UEBA anomaly detection as background tasks, runs the correlation engine to produce alerts, commits the transaction, and schedules per-alert background tasks to send notifications and evaluate playbooks so those tasks can observe committed rows.
+    
+    Parameters:
+        event_data: A Pydantic-like model (supports `model_dump()`) or a dict containing event fields expected by SecurityEvent (e.g., timestamp, source_ip, user, tags, parsed_fields, raw_log, etc.).
+        log_source (str): Fallback log source to assign when `event_data` does not include `log_source`. Defaults to `"api"`.
+    
+    Returns:
+        SecurityEvent: The persisted SecurityEvent instance with fields set and any non-fatal enrichments applied.
     """
     now = datetime.now(timezone.utc)
 
@@ -156,6 +177,11 @@ async def store_event(
             from app.services.anomaly_detector import anomaly_detector
 
             async def _run_ueba():
+                """
+                Evaluate the persisted event using the UEBA anomaly detector in a separate database session.
+                
+                This helper runs the anomaly detector against the current `event` within its own database session so evaluation can proceed independently of the caller's transaction.
+                """
                 async with AsyncSessionLocal() as _db:
                     await anomaly_detector.evaluate_event(_db, event)
 
@@ -192,6 +218,12 @@ async def store_event(
             alert_id = str(alert.id)
 
             async def _run_playbooks(aid: str = alert_id) -> None:
+                """
+                Load the persisted Alert with the given id in a fresh database session and run playbook evaluation for it.
+                
+                Parameters:
+                    aid (str): UUID string of the Alert to load and evaluate playbooks for.
+                """
                 async with AsyncSessionLocal() as _db:
                     alert_result = await _db.execute(
                         select(Alert).where(Alert.id == aid)

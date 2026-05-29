@@ -32,4 +32,10 @@ class CloudConnector(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Readable representation including the connector's name and connector type.
+        
+        Returns:
+            A string in the form "<CloudConnector name='NAME' type=TYPE>" where NAME is the connector's name and TYPE is its connector_type.
+        """
         return f"<CloudConnector name={self.name!r} type={self.connector_type}>"

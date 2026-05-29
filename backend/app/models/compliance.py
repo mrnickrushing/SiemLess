@@ -35,4 +35,10 @@ class ComplianceReport(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide a concise, debug-friendly representation of the ComplianceReport instance.
+        
+        Returns:
+            str: A string in the form "<ComplianceReport id={id} framework={framework} status={status}>".
+        """
         return f"<ComplianceReport id={self.id} framework={self.framework} status={self.status}>"

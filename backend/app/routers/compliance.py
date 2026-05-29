@@ -26,6 +26,18 @@ async def generate_report(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Generate a compliance report request for the specified framework and queue it for asynchronous processing.
+    
+    Parameters:
+        payload (dict): Request body containing at least the key `"framework"` (framework identifier) and optionally `"parameters"` (framework-specific options).
+    
+    Returns:
+        dict: A mapping with `report_id` (the created report's identifier) and `status` set to `"pending"`.
+    
+    Raises:
+        HTTPException: If `payload["framework"]` is missing or not one of the supported frameworks (returns status 400).
+    """
     framework = payload.get("framework", "").lower()
     if framework not in SUPPORTED_FRAMEWORKS:
         raise HTTPException(
@@ -45,6 +57,21 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    List compliance reports with optional framework filtering and pagination.
+    
+    Parameters:
+        framework (Optional[str]): Framework identifier to filter reports (e.g., "pci_dss"). When omitted, no framework filtering is applied.
+        page (int): 1-based page number of results to return.
+        page_size (int): Number of items per page (maximum 100).
+    
+    Returns:
+        dict: Paginated response containing:
+            - total (int): Total number of matching reports.
+            - page (int): Requested page number.
+            - page_size (int): Number of items per page.
+            - items (list[dict]): List of report metadata objects with keys `id`, `framework`, `title`, `status`, `generated_by`, and `created_at` (ISO 8601 string).
+    """
     from sqlalchemy import func
 
     query = select(ComplianceReport)
@@ -85,6 +112,18 @@ async def get_report(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Retrieve a compliance report by its identifier.
+    
+    Parameters:
+        report_id (str): Identifier of the report to fetch.
+    
+    Returns:
+        dict: Report details containing keys `id`, `framework`, `title`, `status`, `generated_by`, `created_at` (ISO 8601 string), `result_data`, `error_message`, and `parameters`.
+    
+    Raises:
+        HTTPException: Raised with status code 404 when no report with the given `report_id` exists.
+    """
     result = await db.execute(
         select(ComplianceReport).where(ComplianceReport.id == report_id)
     )
@@ -110,6 +149,21 @@ async def download_report(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> StreamingResponse:
+    """
+    Stream a CSV file containing flattened results for a completed compliance report.
+    
+    The CSV contains two columns: "metric" and "value". Top-level keys in the report's `result_data` become rows; if a top-level value is a dict, its entries are written as `"{key}.{subkey}"` metric rows. The response is a StreamingResponse with media type "text/csv" and a Content-Disposition attachment filename formatted as "{framework}_{id[:8]}.csv".
+    
+    Parameters:
+        report_id (str): The ID of the compliance report to download.
+    
+    Returns:
+        StreamingResponse: A streaming CSV response with the report's flattened results.
+    
+    Raises:
+        HTTPException: 404 if the report does not exist.
+        HTTPException: 400 if the report is not completed or has no `result_data`.
+    """
     result = await db.execute(
         select(ComplianceReport).where(ComplianceReport.id == report_id)
     )

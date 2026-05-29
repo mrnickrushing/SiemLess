@@ -25,4 +25,10 @@ class IntegrationConfig(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Return a concise developer-facing representation of the IntegrationConfig.
+        
+        Returns:
+            str: A string in the form "<IntegrationConfig name='...'' type=...>" showing the instance's `name` and `integration_type`.
+        """
         return f"<IntegrationConfig name={self.name!r} type={self.integration_type}>"

@@ -43,6 +43,12 @@ const STATUS_COLORS: Record<CaseStatus, string> = {
   closed: 'text-gray-400 bg-gray-400/10 border-gray-400/30',
 };
 
+/**
+ * Format an ISO 8601 timestamp into a localized short date and time string.
+ *
+ * @param iso - An ISO 8601 timestamp string
+ * @returns A localized string with short month, numeric day, and two-digit hour and minute
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',

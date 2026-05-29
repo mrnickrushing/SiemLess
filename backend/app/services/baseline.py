@@ -19,7 +19,21 @@ class BaselineService:
     async def compute_baseline(
         self, db: AsyncSession, username: str
     ) -> UserBehaviorProfile:
-        """Compute or update the behavioral baseline for a user over the last 30 days."""
+        """
+        Compute and persist the 30-day behavioral baseline for the specified user.
+        
+        Loads security events for the user from the last 30 days and updates (or creates) the user's
+        UserBehaviorProfile with baseline_login_hours, baseline_source_ips, baseline_event_rate_per_hour,
+        and baseline_computed_at. If no events exist, an empty profile is created and baseline_computed_at
+        is still stamped.
+        
+        Parameters:
+            db (AsyncSession): Database session used for queries and persistence.
+            username (str): The username whose baseline should be computed.
+        
+        Returns:
+            UserBehaviorProfile: The created or updated user profile containing the baseline fields.
+        """
         since = datetime.now(timezone.utc) - timedelta(days=30)
 
         result = await db.execute(
@@ -58,6 +72,14 @@ class BaselineService:
     async def _get_or_create_profile(
         self, db: AsyncSession, username: str
     ) -> UserBehaviorProfile:
+        """
+        Retrieve a UserBehaviorProfile for the given username or create one if none exists.
+        
+        If a profile does not exist, a new UserBehaviorProfile is instantiated with a generated UUID4 `id`, assigned the provided `username`, and added to the session before being returned.
+        
+        Returns:
+            The existing or newly created UserBehaviorProfile instance.
+        """
         result = await db.execute(
             select(UserBehaviorProfile).where(UserBehaviorProfile.username == username)
         )
@@ -72,7 +94,14 @@ class BaselineService:
         return profile
 
     async def run_nightly_update(self, db: AsyncSession) -> int:
-        """Recompute baselines for all active users. Returns count updated."""
+        """
+        Recompute baseline profiles for users with events in the past 30 days.
+        
+        For each distinct, non-empty username that has a SecurityEvent timestamped within the last 30 days, attempts to recompute that user's baseline; per-user failures are logged and skipped. The database session is committed before returning.
+        
+        Returns:
+            int: Number of distinct usernames processed.
+        """
         since = datetime.now(timezone.utc) - timedelta(days=30)
         distinct_users = await db.execute(
             select(SecurityEvent.user).where(
@@ -91,9 +120,19 @@ class BaselineService:
         return len(usernames)
 
     async def start_baseline_loop(self) -> None:
+        """
+        Start a non-blocking background loop that performs nightly baseline recomputations.
+        
+        This schedules a background task that repeatedly runs the service's nightly update routine (once every 24 hours) without blocking the caller.
+        """
         asyncio.create_task(self._loop())
 
     async def _loop(self) -> None:
+        """
+        Continuously schedules and runs the nightly baseline update once every 24 hours.
+        
+        Runs an infinite loop that waits 24 hours between iterations, creates a new async database session for each run, invokes the nightly baseline recomputation, and logs any exceptions encountered without stopping the loop.
+        """
         while True:
             await asyncio.sleep(86400)  # 24 hours
             try:

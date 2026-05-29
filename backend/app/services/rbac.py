@@ -16,7 +16,18 @@ class RBACService:
     async def has_role(
         self, db: AsyncSession, username: str, required_role: str
     ) -> bool:
-        """Check if a user has at least the required role level."""
+        """
+        Determine whether a user meets or exceeds a required role level.
+        
+        Checks the stored role for `username` and compares its hierarchy level to `required_role`. If the user is not present in the organization records or an error occurs during the check, the function returns `True` (fail-open) for backward compatibility. Unknown `required_role` values default to level 1; unknown stored user roles are treated as level 0.
+        
+        Parameters:
+            username (str): The username to look up.
+            required_role (str): The role required for access (e.g., "admin", "analyst", "readonly").
+        
+        Returns:
+            bool: `True` if the user's role level is greater than or equal to the required role level; `False` otherwise. `True` is also returned when the user is not found or an exception occurs.
+        """
         try:
             result = await db.execute(
                 select(OrgUser).where(OrgUser.username == username)

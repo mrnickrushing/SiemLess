@@ -32,4 +32,10 @@ class SSOConfig(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Return a concise representation of the SSOConfig including provider name and enabled status.
+        
+        Returns:
+            str: Formatted as "<SSOConfig provider='...' enabled=True>" or "<SSOConfig provider='...' enabled=False>".
+        """
         return f"<SSOConfig provider={self.provider_name!r} enabled={self.enabled}>"

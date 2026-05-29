@@ -40,6 +40,12 @@ const TRIGGER_OPTIONS = [
   { value: 'manual', label: 'Manual Trigger' },
 ];
 
+/**
+ * Format an ISO timestamp into a localized short date and time string.
+ *
+ * @param iso - An ISO 8601 timestamp string
+ * @returns A localized string containing abbreviated month, numeric day, and two-digit hour and minute derived from `iso`
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',

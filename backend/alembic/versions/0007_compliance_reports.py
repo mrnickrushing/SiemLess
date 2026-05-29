@@ -14,6 +14,22 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create the 'compliance_reports' database table.
+    
+    Creates a table named 'compliance_reports' with the following columns:
+    - id: primary key string(36)
+    - framework: string(30), not null
+    - title: string(500), not null
+    - generated_at: timestamp with timezone, not null, server default now()
+    - generated_by: string(255), not null, server default 'admin'
+    - parameters: JSON, nullable
+    - status: string(20), not null, server default 'pending'
+    - output_format: string(10), not null, server default 'json'
+    - result_data: JSON, nullable
+    - error_message: text, nullable
+    - created_at: timestamp with timezone, not null, server default now()
+    """
     op.create_table(
         'compliance_reports',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -31,4 +47,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Drop the 'compliance_reports' table and its contents from the database.
+    
+    This removes the table's schema and any stored rows created by the corresponding migration.
+    """
     op.drop_table('compliance_reports')

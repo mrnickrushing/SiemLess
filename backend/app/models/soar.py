@@ -32,6 +32,12 @@ class Playbook(Base):
     run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     def __repr__(self) -> str:
+        """
+        Provide a concise, unambiguous representation of the Playbook for debugging and logging.
+        
+        Returns:
+            str: A string in the form "<Playbook name='...' enabled=...>" showing the playbook's name and enabled state.
+        """
         return f"<Playbook name={self.name!r} enabled={self.enabled}>"
 
 
@@ -59,4 +65,10 @@ class PlaybookRun(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
+        """
+        Provide a concise, debug-friendly string representation of the PlaybookRun instance.
+        
+        Returns:
+            A string containing the model's class name and the instance's `id` and `status`, e.g. "<PlaybookRun id=... status=...>".
+        """
         return f"<PlaybookRun id={self.id} status={self.status}>"

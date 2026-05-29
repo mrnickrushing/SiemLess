@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 class AWSCloudTrailConnector(BaseConnector):
 
     async def poll(self, db: AsyncSession, since: Optional[datetime] = None) -> int:
+        """
+        Fetches AWS CloudTrail events starting at `since` (or the last 10 minutes) and stores them in the event store.
+        
+        Parameters:
+            db (AsyncSession): Async database session used to persist events.
+            since (Optional[datetime]): Earliest event timestamp to query. If omitted, defaults to now minus ten minutes (UTC).
+        
+        Returns:
+            int: Number of events successfully stored.
+        """
         try:
             import boto3
         except ImportError:

@@ -14,6 +14,20 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create the `threat_feed_connectors` table in the database schema.
+    
+    The table stores metadata and state for external threat feed connectors and includes:
+    - `id`: primary key (String(36))
+    - `name`, `feed_type`, `url`
+    - `api_key` (nullable credential)
+    - `last_pulled_at` (timestamp)
+    - `pull_interval_hours` (default 24)
+    - `enabled` (default true)
+    - `indicator_count` (default 0)
+    - `last_error` (nullable)
+    - `created_at` (timestamp defaulting to current time)
+    """
     op.create_table(
         'threat_feed_connectors',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -31,4 +45,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Drop the 'threat_feed_connectors' table from the database.
+    """
     op.drop_table('threat_feed_connectors')

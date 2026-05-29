@@ -14,6 +14,14 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create schema for asset management: three tables (assets, asset_software, asset_vulnerabilities) and their indexes.
+    
+    Creates:
+    - assets: primary id, unique hostname, ip_addresses (JSON), os_type, os_version, asset_type (default 'unknown'), first_seen/last_seen timestamps (default now), tags (JSON), criticality (default 'medium'), and cve_count (default 0); index on hostname.
+    - asset_software: primary id, asset_id FK -> assets.id (ON DELETE CASCADE), name, version, cpe, last_scanned (default now); index on asset_id.
+    - asset_vulnerabilities: primary id, asset_id FK -> assets.id (ON DELETE CASCADE), cve_id, cvss_score, description, severity (default 'medium'), published_at, fetched_at (default now); index on asset_id.
+    """
     op.create_table(
         'assets',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -56,6 +64,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Remove the asset-related database tables created by the corresponding upgrade migration.
+    
+    Drops the `asset_vulnerabilities`, `asset_software`, and `assets` tables in that order to respect their foreign-key dependencies.
+    """
     op.drop_table('asset_vulnerabilities')
     op.drop_table('asset_software')
     op.drop_table('assets')

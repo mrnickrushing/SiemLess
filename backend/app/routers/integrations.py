@@ -23,6 +23,12 @@ async def list_integrations(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> list:
+    """
+    List configured integrations and serialize each to a safe dictionary.
+    
+    Returns:
+        integrations (list): A list of integration dictionaries where sensitive configuration values are replaced with "****" and `created_at` is an ISO 8601 string.
+    """
     result = await db.execute(select(IntegrationConfig))
     return [_integration_to_dict(i) for i in result.scalars()]
 
@@ -33,6 +39,24 @@ async def create_integration(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Create a new IntegrationConfig record from the provided payload.
+    
+    Creates and persists an integration using values from `payload` and returns its serialized representation with sensitive configuration values masked.
+    
+    Parameters:
+        payload (dict): Integration attributes. Recognized keys:
+            - "integration_type" (str): Required; must be one of INTEGRATION_TYPES.
+            - "name" (str): Optional; defaults to the integration_type.
+            - "config" (dict): Optional; defaults to {}.
+            - "enabled" (bool): Optional; defaults to True.
+    
+    Returns:
+        dict: The created integration as a dictionary with sensitive config values replaced by "****" and `created_at` formatted as an ISO 8601 string.
+    
+    Raises:
+        HTTPException: If `integration_type` is not in INTEGRATION_TYPES (status 400).
+    """
     integration_type = payload.get("integration_type", "")
     if integration_type not in INTEGRATION_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported type. Valid: {INTEGRATION_TYPES}")
@@ -57,6 +81,19 @@ async def update_integration(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Update fields of an existing IntegrationConfig and return its serialized representation.
+    
+    Parameters:
+        integration_id (str): Identifier of the integration to update.
+        payload (dict): Mapping containing any of the keys `"name"`, `"config"`, or `"enabled"` whose values will replace the corresponding fields on the integration.
+    
+    Returns:
+        dict: Serialized integration with sensitive configuration values masked and `created_at` formatted as an ISO 8601 string.
+    
+    Raises:
+        HTTPException: 404 if no integration with `integration_id` exists.
+    """
     result = await db.execute(select(IntegrationConfig).where(IntegrationConfig.id == integration_id))
     integration = result.scalar_one_or_none()
     if integration is None:
@@ -75,6 +112,15 @@ async def delete_integration(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> None:
+    """
+    Delete the IntegrationConfig record with the given ID.
+    
+    Parameters:
+        integration_id (str): The UUID string of the integration to remove.
+    
+    Raises:
+        HTTPException: 404 if no integration with the given ID exists.
+    """
     result = await db.execute(select(IntegrationConfig).where(IntegrationConfig.id == integration_id))
     integration = result.scalar_one_or_none()
     if integration is None:
@@ -89,6 +135,18 @@ async def test_connection(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Test the connection for a specific integration.
+    
+    Parameters:
+        integration_id (str): ID of the integration configuration to test.
+    
+    Returns:
+        result (dict): A dictionary with key `"success"` set to `True` if the connection succeeded, `False` otherwise.
+    
+    Raises:
+        HTTPException: Raised with status code 404 when the integration cannot be found or is invalid.
+    """
     try:
         success = await integration_manager.test_connection(db, integration_id)
         return {"success": success}
@@ -103,6 +161,24 @@ async def create_ticket(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Create a ticket using the specified integration and return the created ticket's identifier.
+    
+    Parameters:
+        integration_id (str): Identifier of the integration to use for ticket creation.
+        payload (dict): Request data; may include:
+            - alert_id: Optional alert identifier used in the default title.
+            - title: Ticket title (defaults to "SiemLess Alert {alert_id}").
+            - description: Ticket description (defaults to empty string).
+            - priority: Ticket priority (defaults to "Medium").
+    
+    Returns:
+        dict: A dictionary with the created ticket id: `{"ticket_id": <ticket_id>}`.
+    
+    Raises:
+        HTTPException: 404 if the integration or referenced resource is not found (mapped from ValueError).
+        HTTPException: 502 for other errors encountered while creating the ticket.
+    """
     alert_id = payload.get("alert_id")
     title = payload.get("title", f"SiemLess Alert {alert_id}")
     description = payload.get("description", "")
@@ -125,6 +201,17 @@ async def create_ticket(
 
 def _integration_to_dict(i: IntegrationConfig) -> dict:
     # Mask sensitive config fields
+    """
+    Serialize an IntegrationConfig into a dictionary with sensitive configuration values masked.
+    
+    Parameters:
+        i (IntegrationConfig): The integration model instance to serialize.
+    
+    Returns:
+        dict: A dictionary containing `id`, `name`, `integration_type`, `config`, `enabled`, and
+        `created_at` (ISO 8601 string). In `config`, values for keys containing `key`, `secret`,
+        `password`, or `token` (case-insensitive) are replaced with `"****"`.
+    """
     safe_config = {}
     if i.config:
         for k, v in i.config.items():

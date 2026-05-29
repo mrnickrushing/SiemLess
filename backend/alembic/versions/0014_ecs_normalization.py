@@ -16,8 +16,18 @@ depends_on = None
 def upgrade() -> None:
     # normalized_fields was already added to security_events in migration 0004
     # This migration serves as a placeholder to keep the chain intact
+    """
+    Placeholder migration preserving the Alembic revision chain for the ECS normalization column.
+    
+    Performs no schema changes because the `normalized_fields` column was already added to `security_events` in migration 0004; this revision exists solely to advance the migration sequence.
+    """
     pass
 
 
 def downgrade() -> None:
+    """
+    No-op downgrade for revision 0014 that preserves the Alembic migration chain.
+    
+    This downgrade performs no schema changes or rollback actions. The ECS normalization column `normalized_fields` was already added in migration `0004`, so no changes are required here.
+    """
     pass

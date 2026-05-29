@@ -53,6 +53,12 @@ const CONNECTOR_TYPES: { id: ConnectorType; label: string; fields: { key: string
   },
 ];
 
+/**
+ * Format an ISO 8601 date-time string into a localized short month/day and time.
+ *
+ * @param iso - The ISO 8601 date-time string to format.
+ * @returns A localized date-time string showing short month, numeric day, and two-digit hour and minute (for example, "May 5, 03:30 PM").
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',

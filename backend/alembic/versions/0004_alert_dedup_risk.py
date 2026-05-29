@@ -14,6 +14,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Apply schema changes to support alert deduplication and risk scoring.
+    
+    Adds nullable `risk_score` (Float) and `normalized_fields` (JSON) to `security_events`; adds `hit_count` (Integer, default 1, non-nullable), `risk_score` (Float), and `dedup_key` (String(255)) to `alerts`; and creates the index `ix_alerts_dedup_key` on `alerts.dedup_key`.
+    """
     op.add_column('security_events', sa.Column('risk_score', sa.Float(), nullable=True))
     op.add_column('security_events', sa.Column('normalized_fields', sa.JSON(), nullable=True))
     op.add_column('alerts', sa.Column('hit_count', sa.Integer(), server_default='1', nullable=False))
@@ -23,6 +28,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Reverts the migration by removing the deduplication/risk-scoring index and columns.
+    
+    Drops the index `ix_alerts_dedup_key` on `alerts`, removes `dedup_key`, `risk_score`, and `hit_count` from the `alerts` table, and removes `normalized_fields` and `risk_score` from the `security_events` table.
+    """
     op.drop_index('ix_alerts_dedup_key', table_name='alerts')
     op.drop_column('alerts', 'dedup_key')
     op.drop_column('alerts', 'risk_score')

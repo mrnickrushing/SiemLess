@@ -12,10 +12,20 @@ logger = logging.getLogger(__name__)
 
 class KafkaConsumerService:
     def __init__(self):
+        """
+        Initialize internal state for the KafkaConsumerService.
+        
+        Sets the background task reference `_task` to `None` and the loop control flag `_running` to `False`.
+        """
         self._task: Optional[asyncio.Task] = None
         self._running = False
 
     async def start(self) -> None:
+        """
+        Start the background Kafka consume loop if Kafka is configured and the consumer library is available.
+        
+        This method performs a conditional startup: if `settings.KAFKA_BOOTSTRAP_SERVERS` is set and `confluent_kafka` can be imported, it marks the service as running, schedules the `_consume_loop` as an asyncio background task, and logs that the consumer started. If the bootstrap servers setting is absent or the `confluent_kafka` package is not importable, the method returns without starting the consumer.
+        """
         try:
             from app.config import settings
             if not getattr(settings, "KAFKA_BOOTSTRAP_SERVERS", None):
@@ -34,6 +44,11 @@ class KafkaConsumerService:
         logger.info("Kafka consumer started")
 
     async def stop(self) -> None:
+        """
+        Stop the background Kafka consumer loop and wait for its shutdown.
+        
+        Sets the service's running flag to False, cancels the background task if it exists and is still running, and awaits its completion. A pending cancellation is suppressed (asyncio.CancelledError).
+        """
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
@@ -43,6 +58,11 @@ class KafkaConsumerService:
                 pass
 
     async def _consume_loop(self) -> None:
+        """
+        Run the background loop that consumes messages from the configured Kafka topic and persists them to the event store.
+        
+        Continuously polls the Kafka topic while the service is running, decodes message payloads as JSON (handles both bytes and string payloads), stores each event using the application's async event store within an async DB session, commits the DB transaction, and then commits Kafka offsets. Polling and offset commit operations are executed in a thread executor. Processing errors are logged and do not stop the loop. The Kafka consumer is always closed when the loop exits.
+        """
         from confluent_kafka import Consumer
         from app.config import settings
         from app.database import AsyncSessionLocal

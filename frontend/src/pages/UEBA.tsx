@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { getUEBAProfiles, getUEBAAnomalies, acknowledgeAnomaly, refreshBaselines } from '../api/ueba';
 
+/**
+ * Format an ISO 8601 timestamp into a localized short date and time string.
+ *
+ * @param iso - An ISO 8601 timestamp string to format
+ * @returns A localized date-time string using short month, numeric day, and two-digit hour and minute
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',
@@ -40,6 +46,12 @@ const ANOMALY_TYPE_META: Record<string, { label: string; icon: React.ReactNode; 
   },
 };
 
+/**
+ * Retrieve display metadata for a UEBA anomaly type.
+ *
+ * @param type - The anomaly type key (e.g., `"unusual_hour"`, `"new_source_ip"`)
+ * @returns An object containing `label` (display text), `icon` (React element), and `color` (CSS color class). If the type is unknown, returns a fallback metadata object that uses `type` as the label and a generic alert icon with a muted color.
+ */
 function getAnomalyMeta(type: string) {
   return (
     ANOMALY_TYPE_META[type] ?? {

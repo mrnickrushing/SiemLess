@@ -29,6 +29,20 @@ _MISP_TO_INDICATOR_TYPE = {
 class MISPFeedConnector(BaseFeedConnector):
 
     async def pull(self, db: AsyncSession, since: Optional[datetime] = None) -> int:
+        """
+        Fetches recent attributes from the configured MISP instance and upserts them as ThreatIndicator records.
+        
+        Attributes whose MISP type is unmapped or whose value is empty are skipped. The database session is committed only if at least one new indicator is added.
+        
+        Parameters:
+            since (Optional[datetime]): Fetch attributes modified at or after this timestamp. If omitted, defaults to now minus 1 day (UTC).
+        
+        Returns:
+            int: Number of indicators newly inserted into the database.
+        
+        Raises:
+            Exception: If the HTTP request to the MISP REST search endpoint fails or the response cannot be processed.
+        """
         from app.models.threat_intel import ThreatIndicator
 
         start = since or (datetime.now(timezone.utc) - timedelta(days=1))

@@ -14,6 +14,30 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create the database schema for user behavior analytics by adding the user_behavior_profiles and ueba_anomalies tables and their username indexes.
+    
+    Creates:
+    - user_behavior_profiles: stores per-user baseline data and evaluation timestamps with columns:
+      - id (primary key)
+      - username (unique, not null)
+      - baseline_login_hours (JSON, nullable)
+      - baseline_source_ips (JSON, nullable)
+      - baseline_event_rate_per_hour (float, not null, default 0)
+      - baseline_computed_at (timezone-aware datetime, nullable)
+      - last_evaluated_at (timezone-aware datetime, nullable)
+    - ueba_anomalies: records detected anomalies with columns:
+      - id (primary key)
+      - username (not null)
+      - event_id (nullable)
+      - anomaly_type (not null)
+      - score (not null)
+      - details (JSON, nullable)
+      - alert_id (nullable)
+      - created_at (timezone-aware datetime, not null, default now())
+    
+    Also creates indexes on username for both tables.
+    """
     op.create_table(
         'user_behavior_profiles',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -41,5 +65,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Remove the UEBA-related database objects introduced by this migration.
+    
+    Drops the `ueba_anomalies` and `user_behavior_profiles` tables created in the corresponding upgrade step.
+    """
     op.drop_table('ueba_anomalies')
     op.drop_table('user_behavior_profiles')

@@ -28,7 +28,20 @@ class ComplianceService:
         params: Optional[dict],
         generated_by: str,
     ) -> str:
-        """Create a pending report and kick off background generation. Returns report ID."""
+        """
+        Create a pending compliance report record and start asynchronous background generation.
+        
+        The report is persisted with status "pending" and output_format "json"; background processing will populate results and update the report status when complete.
+        
+        Parameters:
+            db (AsyncSession): Database session used to persist the report.
+            framework (str): Identifier of the compliance framework to generate (e.g., "pci_dss").
+            params (dict, optional): Generation parameters (e.g., {"window_days": 30}). Defaults to an empty dict when omitted.
+            generated_by (str): Identifier of the actor who requested the report.
+        
+        Returns:
+            report_id (str): UUID of the created report.
+        """
         report_id = str(uuid.uuid4())
         report = ComplianceReport(
             id=report_id,
@@ -48,6 +61,16 @@ class ComplianceService:
     async def _generate_background(
         self, report_id: str, framework: str, params: dict
     ) -> None:
+        """
+        Generate and persist a compliance report's results in the background.
+        
+        Runs the framework-specific query flow to build report result data, then updates the corresponding ComplianceReport record: sets `result_data` and `status = "completed"` on success; on any error, logs the exception and attempts to mark the report `status = "failed"` with `error_message` truncated to 1000 characters. This function opens its own database session(s) and commits the report updates.
+        
+        Parameters:
+            report_id (str): UUID of the ComplianceReport to update.
+            framework (str): Framework key (e.g., "pci_dss", "hipaa", "gdpr", "soc2", "nist") used to select query logic.
+            params (dict): Framework-specific parameters (e.g., {"window_days": 30}) passed to the query runner.
+        """
         try:
             async with AsyncSessionLocal() as db:
                 result_data = await self._run_framework_queries(db, framework, params)
@@ -77,6 +100,19 @@ class ComplianceService:
     async def _run_framework_queries(
         self, db: AsyncSession, framework: str, params: dict
     ) -> dict:
+        """
+        Dispatches to the appropriate framework-specific query method and returns collected compliance metrics for the configured lookback window.
+        
+        Parameters:
+            framework (str): The compliance framework identifier ("pci_dss", "hipaa", "gdpr", "soc2", or "nist").
+            params (dict): Optional query parameters; supports "window_days" to set the lookback window (defaults to 30).
+        
+        Returns:
+            dict: Framework-specific metrics and metadata, including at minimum `framework`, `period_start`, `period_end`, and other counts/aggregations.
+        
+        Raises:
+            ValueError: If `framework` is not one of the supported identifiers.
+        """
         now = datetime.now(timezone.utc)
         window_days = params.get("window_days", 30)
         since = now - timedelta(days=window_days)
@@ -96,6 +132,25 @@ class ComplianceService:
 
     async def _pci_dss(self, db: AsyncSession, since: datetime) -> dict:
         # Auth failures
+        """
+        Builds PCI DSS-specific compliance metrics for the reporting window starting at `since`.
+        
+        Parameters:
+            since (datetime): Start of the reporting period (UTC).
+        
+        Returns:
+            dict: A mapping with the following keys:
+                - `framework`: "PCI DSS"
+                - `period_start`: ISO-8601 string for `since`
+                - `period_end`: ISO-8601 string for current UTC time
+                - `auth_failure_count`: number of failed authentication events since `since`
+                - `privilege_escalation_alerts`: number of alerts with MITRE tactic "Privilege Escalation" since `since`
+                - `network_access_events`: number of network-category security events since `since`
+                - `alert_resolution_rate`: percentage (float, one decimal) of resolved alerts vs total alerts
+                - `total_alerts`: total number of alerts since `since`
+                - `resolved_alerts`: number of resolved alerts since `since`
+                - `requirements`: static mapping of PCI DSS requirement identifiers to descriptive strings
+        """
         auth_fail = await db.execute(
             select(func.count()).select_from(SecurityEvent).where(
                 SecurityEvent.timestamp >= since,
@@ -148,6 +203,22 @@ class ComplianceService:
         }
 
     async def _hipaa(self, db: AsyncSession, since: datetime) -> dict:
+        """
+        Builds a HIPAA compliance summary for events and alerts since the provided start time.
+        
+        Parameters:
+            since (datetime): Start of the reporting period (UTC).
+        
+        Returns:
+            dict: A mapping containing:
+                - `framework`: "HIPAA"
+                - `period_start`: ISO 8601 string of `since`
+                - `period_end`: ISO 8601 string of current UTC time
+                - `user_access_events`: total authentication-related security events since `since`
+                - `failed_auth_events`: authentication events with action "failed" since `since`
+                - `data_exfiltration_alerts`: alerts with MITRE tactic "Exfiltration" since `since`
+                - `safeguards`: static mapping of relevant HIPAA safeguard identifiers to descriptions
+        """
         user_access = await db.execute(
             select(func.count()).select_from(SecurityEvent).where(
                 SecurityEvent.timestamp >= since,
@@ -182,6 +253,21 @@ class ComplianceService:
         }
 
     async def _gdpr(self, db: AsyncSession, since: datetime) -> dict:
+        """
+        Builds GDPR compliance metrics for the provided time window.
+        
+        Parameters:
+            since (datetime): Start of the reporting period (inclusive).
+        
+        Returns:
+            dict: A mapping containing:
+                - `framework`: The framework label ("GDPR").
+                - `period_start`: ISO8601 string of the period start.
+                - `period_end`: ISO8601 string of the period end (current UTC time).
+                - `total_data_access_events`: Count of security events since `since`.
+                - `critical_alerts`: Count of alerts with severity "critical" since `since`.
+                - `articles`: A fixed mapping of GDPR article identifiers to descriptive strings.
+        """
         data_access = await db.execute(
             select(func.count()).select_from(SecurityEvent).where(
                 SecurityEvent.timestamp >= since,
@@ -207,6 +293,19 @@ class ComplianceService:
         }
 
     async def _soc2(self, db: AsyncSession, since: datetime) -> dict:
+        """
+        Builds SOC 2 compliance metrics for the reporting window starting at `since`.
+        
+        Returns:
+            dict: A mapping containing:
+                - `framework` (str): "SOC 2".
+                - `period_start` (str): ISO8601 string of `since`.
+                - `period_end` (str): ISO8601 string of the current UTC time.
+                - `total_events_ingested` (int): Count of security events since `since` (0 if none).
+                - `access_control_failures` (int): Count of failed authentication/access events since `since` (0 if none).
+                - `open_alerts` (int): Count of alerts with status "open" created since `since` (0 if none).
+                - `trust_service_criteria` (dict): Static mapping of SOC 2 criteria keys to descriptive strings (`cc6_1`, `cc7_2`, `a1_2`).
+        """
         total_events = await db.execute(
             select(func.count()).select_from(SecurityEvent).where(
                 SecurityEvent.timestamp >= since,
@@ -240,6 +339,23 @@ class ComplianceService:
 
     async def _nist(self, db: AsyncSession, since: datetime) -> dict:
         # Group critical/high alerts by MITRE tactic
+        """
+        Builds a NIST CSF compliance snapshot for the reporting window starting at `since`.
+        
+        Parameters:
+            since (datetime): UTC-aware start of the reporting period.
+        
+        Returns:
+            result (dict): A dictionary containing:
+                - `framework` (str): Human-readable framework label ("NIST CSF").
+                - `period_start` (str): ISO 8601 timestamp for the reporting period start.
+                - `period_end` (str): ISO 8601 timestamp for the reporting period end (current UTC time).
+                - `total_events` (int): Total number of security events since `since`.
+                - `critical_high_alerts_by_tactic` (dict): Mapping of MITRE tactic (or "Unknown") to count of alerts with severity "critical" or "high".
+                - `functions` (dict): Summarized NIST CSF function statuses including:
+                    - `identify`, `protect`, `detect`, `recover` (str): Descriptive status strings.
+                    - `respond` (str): Message that includes the total number of high-priority incidents detected.
+        """
         critical_high = await db.execute(
             select(Alert.mitre_tactic, func.count().label("count"))
             .where(

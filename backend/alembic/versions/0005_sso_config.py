@@ -14,6 +14,19 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create the 'sso_configs' database table for SSO/OIDC configuration.
+    
+    Creates the table with columns:
+    - id: primary key string
+    - provider_name: unique, not null
+    - client_id, client_secret: not null
+    - authorization_endpoint, token_endpoint, userinfo_endpoint: not null text fields
+    - jwks_uri: nullable text
+    - scopes: not null string with default 'openid email profile'
+    - enabled: not null boolean with default true
+    - created_at: timezone-aware timestamp with default current time
+    """
     op.create_table(
         'sso_configs',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -31,4 +44,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Drop the `sso_configs` database table created by the corresponding upgrade migration.
+    
+    This reverses the migration that added the SSO/OIDC configuration table.
+    """
     op.drop_table('sso_configs')

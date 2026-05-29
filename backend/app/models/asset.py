@@ -31,6 +31,12 @@ class Asset(Base):
     cve_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     def __repr__(self) -> str:
+        """
+        Return a concise, debug-friendly representation of the Asset.
+        
+        Returns:
+            str: String containing the asset's hostname and criticality, e.g. "<Asset hostname='host' criticality=high>".
+        """
         return f"<Asset hostname={self.hostname!r} criticality={self.criticality}>"
 
 
@@ -51,6 +57,12 @@ class AssetSoftware(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide a concise string representation of the AssetSoftware instance.
+        
+        Returns:
+            repr_str (str): String in the format "<AssetSoftware name='...' version='...'>".
+        """
         return f"<AssetSoftware name={self.name!r} version={self.version!r}>"
 
 
@@ -75,4 +87,11 @@ class AssetVulnerability(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Produce a concise string representation of the vulnerability for debugging and logging.
+        
+        Returns:
+            str: A string containing the CVE identifier and severity in the form
+                 "<AssetVulnerability cve='CVE-ID' severity=SEVERITY>".
+        """
         return f"<AssetVulnerability cve={self.cve_id!r} severity={self.severity}>"

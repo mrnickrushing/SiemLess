@@ -8,6 +8,15 @@ interface Props {
   onSuccess?: (username: string) => void;
 }
 
+/**
+ * Render the login page UI and manage username/password and SSO sign-in flows.
+ *
+ * The component displays backend health, a username/password form with password visibility toggle,
+ * and an optional list of SSO provider buttons when available.
+ *
+ * @param onSuccess - Optional callback invoked after a successful username/password login with the authenticated username
+ * @returns The rendered login page element
+ */
 export default function Login({ onSuccess }: Props) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('admin');

@@ -21,6 +21,16 @@ _parser = LogParser()
 
 # Keep a thin local alias for backward-compat in case anything imports _store_event
 async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_source: str = "api") -> SecurityEvent:
+    """
+    Store a normalized security event and return the persisted event record.
+    
+    Parameters:
+        event_data (SecurityEventCreate): Normalized security event payload to persist.
+        log_source (str): Identifier of the event's origin (defaults to "api").
+    
+    Returns:
+        SecurityEvent: The persisted security event with database-populated fields (for example, identifiers and timestamps).
+    """
     return await store_event(db, event_data, log_source)
 
 

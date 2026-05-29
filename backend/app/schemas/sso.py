@@ -47,6 +47,19 @@ class SSOConfigRead(BaseModel):
 
     @classmethod
     def from_orm_masked(cls, obj: object) -> "SSOConfigRead":
+        """
+        Create an SSOConfigRead instance from an object by copying attributes and masking its client secret.
+        
+        Parameters:
+            obj (object): Source object expected to have attributes `id`, `provider_name`, `client_id`,
+                `client_secret`, `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`,
+                `jwks_uri`, `scopes`, `enabled`, and `created_at`.
+        
+        Returns:
+            SSOConfigRead: A populated SSOConfigRead with `client_secret_masked` set to the first
+            four characters of `client_secret` followed by "****" when the secret has four or more
+            characters; otherwise `client_secret_masked` is "****".
+        """
         secret = getattr(obj, "client_secret", "") or ""
         masked = secret[:4] + "****" if len(secret) >= 4 else "****"
         return cls(

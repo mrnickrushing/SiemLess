@@ -23,6 +23,14 @@ async def list_feeds(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> list:
+    """
+    List all threat feed connectors.
+    
+    Returns:
+        A list of dictionaries, each representing a ThreatFeedConnector with keys including
+        `id`, `name`, `feed_type`, `url`, `api_key` (redacted as `"****"` when present), `last_pulled_at`,
+        `pull_interval_hours`, `enabled`, `indicator_count`, `last_error`, and `created_at`.
+    """
     result = await db.execute(select(ThreatFeedConnector))
     return [_feed_to_dict(f) for f in result.scalars()]
 
@@ -33,6 +41,28 @@ async def create_feed(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Create and persist a new ThreatFeedConnector from the provided payload.
+    
+    Parameters:
+        payload (dict): Incoming data for the new connector. Expected keys:
+            - "feed_type" (str, optional): Type of feed; must be one of ["misp", "opencti", "taxii"].
+            - "name" (str, optional): Connector name; defaults to the feed_type.
+            - "url" (str): Connector URL (required).
+            - "api_key" (str, optional): API key for the feed.
+            - "pull_interval_hours" (int, optional): Interval in hours between pulls; defaults to 24.
+            - "enabled" (bool, optional): Whether the connector is enabled; defaults to True.
+    
+    Returns:
+        dict: Serialized representation of the created connector, including:
+            - id, name, feed_type, url
+            - api_key (redacted as "****" when present, otherwise None)
+            - last_pulled_at (ISO string or None), pull_interval_hours, enabled
+            - indicator_count, last_error, created_at (ISO string)
+    
+    Raises:
+        HTTPException: 400 if "feed_type" is not one of the allowed types.
+    """
     feed_type = payload.get("feed_type", "")
     if feed_type not in FEED_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported feed type. Valid: {FEED_TYPES}")
@@ -59,6 +89,19 @@ async def update_feed(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Update fields of an existing threat feed connector identified by `feed_id`.
+    
+    Parameters:
+        feed_id (str): Identifier of the target feed connector.
+        payload (dict): Mapping of fields to update. Supported keys: `"name"`, `"url"`, `"api_key"`, `"pull_interval_hours"`, and `"enabled"`.
+    
+    Returns:
+        dict: Dictionary representation of the updated feed connector.
+    
+    Raises:
+        HTTPException: with status code 404 if no feed with `feed_id` exists.
+    """
     result = await db.execute(select(ThreatFeedConnector).where(ThreatFeedConnector.id == feed_id))
     feed = result.scalar_one_or_none()
     if feed is None:
@@ -77,6 +120,15 @@ async def delete_feed(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> None:
+    """
+    Delete the threat feed connector identified by `feed_id`.
+    
+    Parameters:
+        feed_id (str): The UUID of the feed connector to remove.
+    
+    Raises:
+        HTTPException: Status 404 if no feed with the given id exists.
+    """
     result = await db.execute(select(ThreatFeedConnector).where(ThreatFeedConnector.id == feed_id))
     feed = result.scalar_one_or_none()
     if feed is None:
@@ -91,6 +143,19 @@ async def pull_now(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Trigger an immediate pull for the threat feed connector identified by `feed_id`.
+    
+    Parameters:
+        feed_id (str): Identifier of the ThreatFeedConnector to pull now.
+    
+    Returns:
+        dict: Result of the pull operation.
+    
+    Raises:
+        HTTPException: 404 if the specified feed connector was not found or a ValueError occurred.
+        HTTPException: 502 for other errors encountered while performing the pull.
+    """
     try:
         result = await feed_manager.pull_now(feed_id)
         return result
@@ -101,6 +166,26 @@ async def pull_now(
 
 
 def _feed_to_dict(f: ThreatFeedConnector) -> dict:
+    """
+    Serialize a ThreatFeedConnector into a dictionary suitable for API responses.
+    
+    Parameters:
+        f (ThreatFeedConnector): ORM instance representing a threat feed connector.
+    
+    Returns:
+        dict: A mapping with the connector's fields:
+            - id: Connector UUID string.
+            - name: Connector name.
+            - feed_type: One of the supported feed types.
+            - url: Feed URL.
+            - api_key: Redacted API key as `"****"` if present, otherwise `None`.
+            - last_pulled_at: ISO 8601 string of last pull timestamp or `None`.
+            - pull_interval_hours: Pull interval in hours.
+            - enabled: Boolean indicating whether the connector is enabled.
+            - indicator_count: Number of imported indicators.
+            - last_error: Last error message, if any.
+            - created_at: ISO 8601 string of the creation timestamp.
+    """
     return {
         "id": f.id,
         "name": f.name,

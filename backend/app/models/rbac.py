@@ -22,6 +22,12 @@ class Organization(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide an unambiguous string representation of the Organization for debugging.
+        
+        Returns:
+            repr_str (str): String of the form "<Organization name='...'>".
+        """
         return f"<Organization name={self.name!r}>"
 
 
@@ -48,6 +54,14 @@ class OrgUser(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Return a concise machine-friendly representation of the OrgUser instance.
+        
+        The string includes the model name and the `username` and `role` fields (e.g. "<OrgUser username='alice' role=admin>").
+        
+        Returns:
+            str: Representation in the format "<OrgUser username='... ' role=...>".
+        """
         return f"<OrgUser username={self.username!r} role={self.role}>"
 
 
@@ -68,4 +82,10 @@ class APIToken(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Developer-facing string representation of the APIToken that includes the token owner's username.
+        
+        Returns:
+            A string in the format "<APIToken username='...'>" suitable for debugging and logging.
+        """
         return f"<APIToken username={self.username!r}>"

@@ -36,12 +36,42 @@ class _NoopRedis:
         return None
 
     async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
+        """
+        Store a value in Redis under the given key, optionally setting a time-to-live.
+        
+        Parameters:
+            key (str): Redis key under which to store the value.
+            value (Any): Value to store; callers are responsible for serialization if needed.
+            ex (Optional[int]): Expiration time in seconds; if provided, the key will expire after this many seconds.
+        
+        Notes:
+            - If Redis is unavailable or an error occurs, the operation is silently ignored (no exception is raised).
+        """
         pass
 
     async def setex(self, key: str, ttl: int, value: Any) -> None:
+        """
+        Set a key to the given value with a time-to-live in seconds.
+        
+        This stores `value` under `key` and ensures the key expires after `ttl` seconds.
+        If Redis is unavailable or an error occurs, the operation is silently ignored.
+        
+        Parameters:
+            key (str): The Redis key to set.
+            ttl (int): Time-to-live in seconds for the key.
+            value (Any): The value to store under the key.
+        """
         pass
 
     async def delete(self, *keys: str) -> None:
+        """
+        Delete one or more keys from the Redis store.
+        
+        Attempts to remove each provided key; if Redis is unavailable or an error occurs during deletion, the error is suppressed and the operation becomes a no-op.
+        
+        Parameters:
+            *keys (str): One or more Redis key names to delete.
+        """
         pass
 
     async def publish(self, channel: str, message: str) -> None:
@@ -113,6 +143,17 @@ class RedisClient:
             return None
 
     async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
+        """
+        Set a Redis key to the given value with an optional time-to-live.
+        
+        Parameters:
+            key (str): The Redis key to set.
+            value (Any): The value to store under the key; will be passed through to the client as-is.
+            ex (Optional[int]): Time-to-live in seconds; if provided, the key will expire after this many seconds.
+        
+        Notes:
+            Any errors contacting Redis are suppressed; failures are logged at debug level and not raised.
+        """
         try:
             client = await self._get_client()
             await client.set(key, value, ex=ex)
@@ -120,10 +161,25 @@ class RedisClient:
             logger.debug("Redis SET %s failed: %s", key, exc)
 
     async def setex(self, key: str, ttl: int, value: Any) -> None:
-        """Set key with TTL in seconds (SETEX)."""
+        """
+        Set a value for the given key and ensure it expires after the specified TTL.
+        
+        Parameters:
+            key (str): Redis key to set.
+            ttl (int): Time-to-live in seconds after which the key expires.
+            value (Any): Value to store.
+        """
         await self.set(key, value, ex=ttl)
 
     async def set_json(self, key: str, value: Any, ex: Optional[int] = None) -> None:
+        """
+        Store a Python object as a JSON-encoded value in Redis under the given key with an optional TTL.
+        
+        Parameters:
+            key (str): Redis key to set.
+            value (Any): JSON-serializable Python object to store.
+            ex (Optional[int]): Expiration time in seconds; if provided, the key will expire after this many seconds.
+        """
         await self.set(key, json.dumps(value), ex=ex)
 
     async def get_json(self, key: str) -> Optional[Any]:
@@ -169,5 +225,10 @@ redis_client = RedisClient(_settings.REDIS_URL)
 
 
 async def get_redis() -> RedisClient:
-    """Dependency / utility: returns the shared Redis client."""
+    """
+    Get the module-level shared Redis client for dependency injection.
+    
+    Returns:
+        redis_client (RedisClient): The singleton RedisClient instance used by the application.
+    """
     return redis_client

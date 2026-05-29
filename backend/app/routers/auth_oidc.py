@@ -42,6 +42,19 @@ _PKCE_TTL = 300  # 5 minutes
 # ---------------------------------------------------------------------------
 
 async def _get_provider(db: AsyncSession, provider_name: str) -> SSOConfig:
+    """
+    Retrieve an enabled SSO provider configuration by provider name.
+    
+    Parameters:
+        db (AsyncSession): Database session used to query SSO configurations.
+        provider_name (str): The provider_name identifier to look up.
+    
+    Returns:
+        SSOConfig: The matching enabled SSOConfig instance.
+    
+    Raises:
+        HTTPException: 404 if no enabled configuration with the given provider_name exists.
+    """
     result = await db.execute(
         select(SSOConfig).where(
             SSOConfig.provider_name == provider_name,
@@ -60,7 +73,12 @@ async def _get_provider(db: AsyncSession, provider_name: str) -> SSOConfig:
 
 @router.get("/providers", response_model=list[SSOProviderPublic], summary="List enabled SSO providers")
 async def list_providers(db: AsyncSession = Depends(get_db)) -> list[SSOProviderPublic]:
-    """Public endpoint — no authentication required."""
+    """
+    Return publicly discoverable OIDC providers that are enabled.
+    
+    Returns:
+        list[SSOProviderPublic]: A list of provider descriptors, each containing `provider_name`, `scopes`, and a `login_url` to initiate OIDC login.
+    """
     result = await db.execute(select(SSOConfig).where(SSOConfig.enabled == True))  # noqa: E712
     providers = result.scalars().all()
     return [
@@ -78,6 +96,17 @@ async def oidc_login(
     provider: str,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
+    """
+    Initiates an OIDC authorization request by redirecting the client to the provider's authorization endpoint.
+    
+    Generates PKCE `state`, `code_verifier`, and `code_challenge`, stores the `state` mapping to `{"verifier", "redirect_uri"}` in Redis with a TTL of 300 seconds (Redis failures are logged and do not stop the flow), then constructs the provider authorization URL with required query parameters and returns a 302 redirect to it.
+    
+    Parameters:
+        provider (str): Name of the configured OIDC provider to use (used to load the enabled provider configuration and to build the canonical callback URI).
+    
+    Returns:
+        RedirectResponse: A 302 redirect to the provider's authorization endpoint containing `response_type=code`, client credentials, `redirect_uri`, `scope`, `state`, and PKCE parameters (`code_challenge` and `code_challenge_method=S256`).
+    """
     cfg = await _get_provider(db, provider)
 
     # Generate PKCE state and code_verifier
@@ -127,6 +156,21 @@ async def oidc_callback(
     response: Response = None,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
+    """
+    Handle the OIDC provider callback: exchange the authorization code for tokens, extract a username from the ID token or userinfo endpoint, issue an application JWT as an HTTP-only cookie, and redirect the client to "/".
+    
+    Parameters:
+        provider (str): Registered provider name used to load provider configuration.
+        code (str): Authorization code returned by the IdP.
+        state (str): PKCE/state value used to retrieve the stored code verifier and original redirect URI.
+        response (Response | None): Optional FastAPI Response (unused; present for dependency injection compatibility).
+    
+    Returns:
+        RedirectResponse: A 302 redirect to "/" with an `access_token` HTTP-only cookie set for the authenticated user.
+    
+    Raises:
+        HTTPException: 502 if token exchange with the IdP fails; 401 if a username cannot be extracted from tokens/userinfo.
+    """
     cfg = await _get_provider(db, provider)
 
     # Retrieve code_verifier and stored redirect_uri from Redis
@@ -238,6 +282,12 @@ async def list_configs(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> list[SSOConfigRead]:
+    """
+    List all stored SSO provider configurations with sensitive fields masked.
+    
+    Returns:
+        configs (list[SSOConfigRead]): A list of read models for each SSO configuration; secret or sensitive fields are masked.
+    """
     result = await db.execute(select(SSOConfig))
     configs = result.scalars().all()
     return [SSOConfigRead.from_orm_masked(c) for c in configs]
@@ -254,6 +304,17 @@ async def create_config(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> SSOConfigRead:
+    """
+    Create a new SSO provider configuration and persist it to the database.
+    
+    The new record is assigned a generated UUID for its `id`. Sensitive fields in the returned model are masked.
+    
+    Parameters:
+        payload (SSOConfigCreate): Data for the new SSO configuration.
+    
+    Returns:
+        SSOConfigRead: The created configuration record with sensitive fields masked.
+    """
     import uuid as _uuid
     cfg = SSOConfig(
         id=str(_uuid.uuid4()),
@@ -272,6 +333,19 @@ async def update_config(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> SSOConfigRead:
+    """
+    Update an existing SSO provider configuration with the values provided in `payload`.
+    
+    Parameters:
+        config_id (str): UUID of the SSO configuration to update.
+        payload (SSOConfigUpdate): Fields to update; only attributes with non-None values will be applied.
+    
+    Returns:
+        SSOConfigRead: The updated configuration as a read model with sensitive fields masked.
+    
+    Raises:
+        HTTPException: 404 if no configuration with `config_id` is found.
+    """
     result = await db.execute(select(SSOConfig).where(SSOConfig.id == config_id))
     cfg = result.scalar_one_or_none()
     if cfg is None:
@@ -291,6 +365,15 @@ async def delete_config(
     db: AsyncSession = Depends(get_db),
     username: str = Depends(get_current_user),
 ) -> None:
+    """
+    Delete an SSO provider configuration by its ID.
+    
+    Parameters:
+        config_id (str): UUID string of the SSO configuration to remove.
+    
+    Raises:
+        HTTPException: 404 if no SSO configuration with the given `config_id` exists.
+    """
     result = await db.execute(select(SSOConfig).where(SSOConfig.id == config_id))
     cfg = result.scalar_one_or_none()
     if cfg is None:

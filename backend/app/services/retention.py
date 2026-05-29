@@ -19,7 +19,19 @@ logger = logging.getLogger(__name__)
 class RetentionService:
 
     async def run_retention_cycle(self, db: AsyncSession) -> dict:
-        """Move hot events to cold storage per retention policies."""
+        """
+        Apply enabled retention policies to move aged SecurityEvent rows into ColdEvent records and optionally archive them to S3.
+        
+        Processes each enabled RetentionPolicy by selecting hot events older than the policy's hot_retention_days (batch-limited), creating corresponding ColdEvent entries, deleting the original hot events, and, if configured, uploading the moved events to S3. S3 failures are logged and do not abort the overall cycle. The function commits the transaction before returning aggregated counts.
+        
+        Parameters:
+            db (AsyncSession): Active database session used for selecting, inserting, deleting, and committing changes.
+        
+        Returns:
+            dict: Summary counts with keys:
+                - "moved_to_cold": number of events moved into cold storage.
+                - "archived_to_s3": number of events successfully archived to S3.
+        """
         result = await db.execute(
             select(RetentionPolicy).where(RetentionPolicy.enabled == True)  # noqa: E712
         )
@@ -95,7 +107,17 @@ class RetentionService:
     async def _archive_to_s3(
         self, events: list, bucket: str, prefix: str
     ) -> int:
-        """Serialize events to JSONL and upload to S3."""
+        """
+        Serialize a list of security events into NDJSON and upload the payload to the specified S3 bucket.
+        
+        Parameters:
+            events (list): Iterable of event objects to archive; each object must expose `id`, `timestamp`, `severity`, `log_type`, and `message` attributes. Records are written one JSON object per line.
+            bucket (str): Target S3 bucket name.
+            prefix (str): Key prefix to prepend to the generated object key; a timestamp and short UUID are appended to form the final key.
+        
+        Returns:
+            int: Number of events uploaded on success, or `0` if the upload failed.
+        """
         try:
             import boto3
             import asyncio
@@ -132,9 +154,19 @@ class RetentionService:
             return 0
 
     async def start_retention_loop(self) -> None:
+        """
+        Start the background retention loop.
+        
+        Schedules the service's retention loop (self._loop) as an asyncio background task so retention cycles run periodically without blocking the caller.
+        """
         asyncio.create_task(self._loop())
 
     async def _loop(self) -> None:
+        """
+        Continuously runs retention cycles on a six-hour schedule.
+        
+        Sleeps six hours between iterations, opens a new async database session for each cycle, invokes run_retention_cycle(db), and logs completion. Any exception raised during a cycle is logged and the loop continues.
+        """
         while True:
             await asyncio.sleep(3600 * 6)  # Every 6 hours
             try:
@@ -145,7 +177,16 @@ class RetentionService:
                 logger.error("Retention cycle failed: %s", exc)
 
     async def get_stats(self, db: AsyncSession) -> dict:
-        """Return counts and oldest event date."""
+        """
+        Return counts of hot and cold events and the timestamp of the oldest hot event.
+        
+        Returns:
+            dict: {
+                "hot_count": int - number of SecurityEvent rows (0 if none),
+                "cold_count": int - number of ColdEvent rows (0 if none),
+                "oldest_event": str | None - ISO 8601 string of the oldest SecurityEvent.timestamp, or None if no hot events
+            }
+        """
         from sqlalchemy import func
         hot_count_result = await db.execute(
             select(func.count()).select_from(SecurityEvent)

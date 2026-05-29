@@ -41,7 +41,13 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Start background services on startup; shut them down on exit."""
+    """
+    Manage application startup and shutdown lifecycle by starting and stopping background services.
+    
+    On startup, conditionally starts the correlation engine cleanup task, syslog server, Kafka consumer, cloud connector manager,
+    UEBA baseline loop (when enabled), retention loop, and threat feed manager. Yields control to the application runtime.
+    On shutdown, stops the Kafka consumer, stops the syslog server if it is running, and stops the correlation engine cleanup task.
+    """
     # Start correlation engine window-counter cleanup task
     if settings.CORRELATION_ENABLED:
         await correlation_engine.start_cleanup_task(

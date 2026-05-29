@@ -228,6 +228,22 @@ class CorrelationEngine:
         event_ids: list[str],
         group_value: str,
     ) -> Alert:
+        """
+        Create or update a correlation Alert for a rule-triggering event, using a deduplication key based on the rule and group.
+        
+        If an open (not `resolved` or `false_positive`) alert exists with the deduplication key `"{rule.id}:{group_value}"`, increment its `hit_count`, merge new `event_ids` (avoiding duplicates), recompute its `risk_score`, update rule trigger statistics, persist changes, and return the existing alert. If no such alert exists, create a new `Alert` populated from the rule and event, compute its `risk_score`, update rule trigger statistics, persist the new alert, and return it.
+        
+        Parameters:
+            db (AsyncSession): Database session used to query and persist alerts and rule state.
+            rule (CorrelationRule): The correlation rule that triggered.
+            event (SecurityEvent): The event that caused the rule to trigger.
+            count (int): Number of matching events in the rule's time window.
+            event_ids (list[str]): IDs of events contributing to the threshold being met.
+            group_value (str): The grouping value used for deduplication (e.g., source IP or "__all__").
+        
+        Returns:
+            Alert: The existing deduplicated alert updated, or the newly created alert.
+        """
         title = rule.alert_title_template.format(
             rule_name=rule.name,
             count=count,

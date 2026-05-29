@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 class AzureActivityConnector(BaseConnector):
 
     async def poll(self, db: AsyncSession, since: Optional[datetime] = None) -> int:
+        """
+        Poll Azure Activity Logs and persist retrieved entries into the event store.
+        
+        When Azure SDK packages are not available, the connector is disabled and the method returns 0.
+        Parameters:
+            db (AsyncSession): Database session used to persist events into the application event store.
+            since (Optional[datetime]): Earliest event timestamp to fetch; when omitted, defaults to 10 minutes before the current UTC time.
+        
+        Returns:
+            int: Number of activity log entries successfully stored.
+        
+        Raises:
+            Exception: Propagates exceptions raised while fetching activity logs from Azure.
+        """
         try:
             from azure.identity import ClientSecretCredential
             from azure.mgmt.monitor import MonitorManagementClient

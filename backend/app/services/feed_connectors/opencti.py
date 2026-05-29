@@ -53,6 +53,19 @@ query GetIndicators($first: Int, $after: String) {
 class OpenCTIFeedConnector(BaseFeedConnector):
 
     async def pull(self, db: AsyncSession, since: Optional[datetime] = None) -> int:
+        """
+        Fetches indicators from an OpenCTI GraphQL endpoint and inserts any new indicators into the database.
+        
+        Parameters:
+            db (AsyncSession): Database session used to query existing indicators and add new ThreatIndicator records.
+            since (Optional[datetime]): Accepted for compatibility but not used by this implementation.
+        
+        Returns:
+            int: The number of ThreatIndicator records inserted into the database.
+        
+        Raises:
+            Exception: Propagates exceptions from the HTTP request or response processing when the GraphQL query fails.
+        """
         from app.models.threat_intel import ThreatIndicator
 
         try:

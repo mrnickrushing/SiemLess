@@ -28,6 +28,12 @@ class RetentionPolicy(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide a concise debug representation of the retention policy.
+        
+        Returns:
+            A string containing the policy name and hot retention in days, formatted like "<RetentionPolicy name='... ' hot=...d>".
+        """
         return f"<RetentionPolicy name={self.name!r} hot={self.hot_retention_days}d>"
 
 
@@ -44,4 +50,10 @@ class ColdEvent(Base):
     event_data: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     def __repr__(self) -> str:
+        """
+        Provide a developer-facing string representation that includes the original event ID.
+        
+        Returns:
+            str: A string formatted as "<ColdEvent original_id={original_id!r}>" where `{original_id!r}` is the repr of the original event identifier.
+        """
         return f"<ColdEvent original_id={self.original_id!r}>"

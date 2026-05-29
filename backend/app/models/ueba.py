@@ -27,6 +27,12 @@ class UserBehaviorProfile(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide an unambiguous string representation of the UserBehaviorProfile including the username.
+        
+        Returns:
+            A string formatted as "<UserBehaviorProfile username='...'>" where the username is shown as its repr.
+        """
         return f"<UserBehaviorProfile username={self.username!r}>"
 
 
@@ -49,4 +55,10 @@ class UEBAAnomaly(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide a concise developer-facing string representation of the UEBAAnomaly.
+        
+        Returns:
+            str: A string containing the class name and the anomaly's `username`, `anomaly_type`, and `score`.
+        """
         return f"<UEBAAnomaly username={self.username!r} type={self.anomaly_type} score={self.score}>"

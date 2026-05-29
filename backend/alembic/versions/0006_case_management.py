@@ -14,6 +14,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    Create the case management schema.
+    
+    Creates the `cases` table and four child tables—`case_events`, `case_alerts`, `case_comments`, and `case_artifacts`—including their columns, foreign keys referencing `cases.id` with ON DELETE CASCADE, server defaults for status/severity/creator/timestamps, and indexes on each child table's `case_id` column.
+    """
     op.create_table(
         'cases',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -71,6 +76,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Drop the case management tables in reverse dependency order.
+    
+    Removes `case_artifacts`, `case_comments`, `case_alerts`, `case_events`, and `cases` to undo the migration that created the case management schema.
+    """
     op.drop_table('case_artifacts')
     op.drop_table('case_comments')
     op.drop_table('case_alerts')

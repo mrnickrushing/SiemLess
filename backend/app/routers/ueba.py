@@ -22,6 +22,30 @@ async def list_profiles(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    List user behavior profiles with pagination.
+    
+    Parameters:
+        page (int): Page number, starting at 1.
+        page_size (int): Number of items per page (1–100).
+    
+    Returns:
+        dict: {
+            "total": int,            # total number of profiles
+            "items": [               # list of profile objects
+                {
+                    "id": int,
+                    "username": str,
+                    "baseline_login_hours": Any,
+                    "baseline_source_ips": Any,
+                    "baseline_event_rate_per_hour": Any,
+                    "baseline_computed_at": str | None,  # ISO 8601 timestamp or None
+                    "last_evaluated_at": str | None,    # ISO 8601 timestamp or None
+                },
+                ...
+            ],
+        }
+    """
     from sqlalchemy import func
 
     total_result = await db.execute(select(func.count()).select_from(UserBehaviorProfile))
@@ -54,6 +78,25 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Retrieve a user behavior profile by username.
+    
+    Parameters:
+        username (str): Username of the profile to fetch.
+    
+    Returns:
+        dict: Profile data with keys:
+            - id: Profile identifier.
+            - username: Profile username.
+            - baseline_login_hours: Baseline login hours data.
+            - baseline_source_ips: Baseline source IPs data.
+            - baseline_event_rate_per_hour: Baseline event rate per hour.
+            - baseline_computed_at: ISO 8601 timestamp string when baseline was computed, or `None`.
+            - last_evaluated_at: ISO 8601 timestamp string of last evaluation, or `None`.
+    
+    Raises:
+        fastapi.HTTPException: Raised with status code 404 if the profile is not found.
+    """
     from fastapi import HTTPException
 
     result = await db.execute(
@@ -85,6 +128,35 @@ async def list_anomalies(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    List UEBA anomalies with optional filters and pagination.
+    
+    Parameters:
+        username (Optional[str]): Filter anomalies by the originating username.
+        anomaly_type (Optional[str]): Filter by anomaly type string.
+        min_score (Optional[float]): Include anomalies with score greater than or equal to this value.
+        start_time (Optional[datetime]): Include anomalies created at or after this timestamp.
+        end_time (Optional[datetime]): Include anomalies created at or before this timestamp.
+        page (int): 1-based page number to return.
+        page_size (int): Number of items per page (1–100).
+        db (AsyncSession): Database session dependency (injected).
+        _username (str): Authenticated requester username (injected; unused).
+    
+    Returns:
+        dict: A pagination payload with keys:
+            - total (int): Total number of anomalies matching the filters.
+            - page (int): Echo of the requested page number.
+            - page_size (int): Echo of the requested page size.
+            - items (List[dict]): List of anomaly records, each containing:
+                - id: Anomaly identifier.
+                - username: Username associated with the anomaly.
+                - event_id: Related event identifier.
+                - anomaly_type: Type/category of the anomaly.
+                - score: Numeric anomaly score.
+                - details: Arbitrary details about the anomaly.
+                - alert_id: Associated alert identifier, if any.
+                - created_at: ISO 8601 timestamp string when the anomaly was created.
+    """
     from sqlalchemy import func
 
     query = select(UEBAAnomaly)
@@ -137,11 +209,24 @@ async def list_anomalies(
 async def refresh_baselines(
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Trigger a manual baseline refresh by scheduling the refresh to run in the background.
+    
+    Schedules a background task that runs the nightly baseline update and returns immediately.
+    
+    Returns:
+        result (dict): Dictionary containing a confirmation message: `{'message': 'Baseline refresh triggered in background'}`.
+    """
     import asyncio
     from app.database import AsyncSessionLocal
     from app.services.baseline import baseline_service
 
     async def _run():
+        """
+        Execute the baseline nightly update and log completion.
+        
+        Opens a new asynchronous database session, runs the baseline service's nightly update, and logs the number of users processed.
+        """
         async with AsyncSessionLocal() as db:
             count = await baseline_service.run_nightly_update(db)
             logger.info("Manual baseline refresh complete for %d users", count)

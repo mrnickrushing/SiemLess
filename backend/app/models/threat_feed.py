@@ -33,4 +33,10 @@ class ThreatFeedConnector(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Provide a concise developer-facing string representation of the ThreatFeedConnector.
+        
+        Returns:
+            repr_str (str): A string containing the connector's `name` and `feed_type`, suitable for debugging.
+        """
         return f"<ThreatFeedConnector name={self.name!r} type={self.feed_type}>"

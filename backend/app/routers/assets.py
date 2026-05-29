@@ -27,6 +27,25 @@ async def list_assets(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Return a paginated list of assets, optionally filtered by criticality, OS type, or hostname.
+    
+    Supports filtering by `criticality` and `os_type`, and a case-insensitive partial match on `hostname`. Results are ordered by `last_seen` descending.
+    
+    Parameters:
+        criticality (Optional[str]): Filter assets that have this criticality value.
+        os_type (Optional[str]): Filter assets that have this operating system type.
+        search (Optional[str]): Case-insensitive substring to match against asset hostnames.
+        page (int): 1-based page number of results.
+        page_size (int): Number of items per page (maximum 200).
+    
+    Returns:
+        dict: A dictionary containing:
+            - `total` (int): total number of matching assets
+            - `page` (int): current page number
+            - `page_size` (int): number of items per page
+            - `items` (list): list of asset dictionaries
+    """
     from sqlalchemy import func
 
     query = select(Asset)
@@ -64,6 +83,21 @@ async def create_asset(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Create a new Asset record from the provided payload and return its serialized representation.
+    
+    Parameters:
+        payload (dict): Asset attributes. Required key: `"hostname"`. Optional keys:
+            - `ip_addresses` (list): list of IP address strings.
+            - `os_type` (str)
+            - `os_version` (str)
+            - `asset_type` (str): defaults to `"unknown"` when omitted.
+            - `criticality` (str): defaults to `"medium"` when omitted.
+            - `tags` (list)
+    
+    Returns:
+        dict: A dictionary representation of the created asset (fields include id, hostname, ip_addresses, os_type, os_version, asset_type, criticality, tags, first_seen, last_seen, and cve_count).
+    """
     from datetime import datetime, timezone
     asset = Asset(
         id=str(uuid.uuid4()),
@@ -89,6 +123,20 @@ async def get_asset(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Fetches an asset by its ID and returns the asset data together with its installed software and vulnerabilities.
+    
+    Parameters:
+        asset_id (str): UUID of the asset to retrieve.
+    
+    Returns:
+        dict: Asset data merged with two keys:
+            - "software": list of software dictionaries associated with the asset.
+            - "vulnerabilities": list of vulnerability dictionaries associated with the asset, ordered by CVSS score descending with null scores last.
+    
+    Raises:
+        HTTPException: 404 if the asset with the given ID does not exist.
+    """
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if asset is None:
@@ -119,6 +167,19 @@ async def update_asset(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Update selectable fields of an existing asset.
+    
+    Parameters:
+        asset_id (str): The UUID string identifying the asset to update.
+        payload (dict): A mapping of fields to update. Supported keys: "criticality", "tags", "os_type", "os_version", "asset_type".
+    
+    Returns:
+        dict: The updated asset serialized as a dictionary.
+    
+    Raises:
+        HTTPException: Raised with status code 404 if no asset exists with the given `asset_id`.
+    """
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if asset is None:
@@ -137,6 +198,15 @@ async def delete_asset(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> None:
+    """
+    Delete the asset identified by asset_id from the database.
+    
+    Parameters:
+        asset_id (str): Identifier of the asset to delete.
+    
+    Raises:
+        HTTPException: status code 404 if the asset does not exist.
+    """
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if asset is None:
@@ -153,6 +223,28 @@ async def get_asset_events(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Return recent security events for the specified asset's hostname with pagination.
+    
+    Parameters:
+        asset_id (str): UUID of the asset whose events to retrieve.
+        page (int): 1-based page number (must be >= 1).
+        page_size (int): Number of events per page (1–100).
+    
+    Returns:
+        dict: A mapping with:
+            - "total" (int): Total number of matching events.
+            - "items" (list[dict]): Paginated events, each containing:
+                - "id" (str): Event identifier.
+                - "timestamp" (str|None): ISO 8601 timestamp or `None` if missing.
+                - "severity" (str): Event severity.
+                - "category" (str): Event category.
+                - "message" (str): Event message.
+                - "source_ip" (str): Source IP address.
+    
+    Raises:
+        HTTPException: 404 if the asset with `asset_id` does not exist.
+    """
     from sqlalchemy import func
 
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
@@ -199,6 +291,19 @@ async def add_software(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Add a software record to an existing asset.
+    
+    Parameters:
+        asset_id (str): Identifier of the asset to attach the software to.
+        payload (dict): Software attributes; must include `"name"` and may include `"version"` and `"cpe"`.
+    
+    Returns:
+        dict: Serialized software record as returned by `_sw_to_dict`.
+    
+    Raises:
+        HTTPException: 404 if the asset with `asset_id` does not exist.
+    """
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -221,10 +326,21 @@ async def scan_cves(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> dict:
+    """
+    Trigger CVE enrichment for the given asset by scheduling a background task.
+    
+    Returns:
+        result (dict): A dict with a `message` key confirming the CVE scan was scheduled.
+    """
     import asyncio
     from app.database import AsyncSessionLocal
 
     async def _run():
+        """
+        Perform CVE enrichment for the surrounding `asset_id` and log how many new CVEs were added.
+        
+        This coroutine runs using its own database session, invokes the asset discovery service to enrich CVE data for the asset, and emits an informational log with the number of newly discovered CVEs.
+        """
         async with AsyncSessionLocal() as _db:
             count = await asset_discovery_service.enrich_cves(_db, asset_id)
             logger.info("CVE scan for asset %s: %d new CVEs", asset_id, count)
@@ -239,6 +355,15 @@ async def list_vulnerabilities(
     db: AsyncSession = Depends(get_db),
     _username: str = Depends(get_current_user),
 ) -> list:
+    """
+    List vulnerabilities for the given asset ordered by CVSS score (highest first, nulls last).
+    
+    Parameters:
+        asset_id (str): Identifier of the asset whose vulnerabilities will be listed.
+    
+    Returns:
+        list: A list of vulnerability dictionaries containing `id`, `asset_id`, `cve_id`, `cvss_score`, `description`, `severity`, and `published_at`/`fetched_at` timestamp fields (ISO-formatted strings or `None`).
+    """
     result = await db.execute(
         select(AssetVulnerability)
         .where(AssetVulnerability.asset_id == asset_id)
@@ -248,6 +373,17 @@ async def list_vulnerabilities(
 
 
 def _asset_to_dict(a: Asset) -> dict:
+    """
+    Serialize an Asset ORM instance into a JSON-ready dictionary.
+    
+    Parameters:
+        a (Asset): Asset model instance to serialize.
+    
+    Returns:
+        dict: Mapping containing asset fields:
+            - `id`, `hostname`, `ip_addresses`, `os_type`, `os_version`, `asset_type`, `tags`, `criticality`, `cve_count`
+            - `first_seen`, `last_seen` as ISO 8601 strings if present, otherwise `None`
+    """
     return {
         "id": a.id,
         "hostname": a.hostname,
@@ -264,6 +400,21 @@ def _asset_to_dict(a: Asset) -> dict:
 
 
 def _sw_to_dict(s: AssetSoftware) -> dict:
+    """
+    Serialize an AssetSoftware ORM object into a JSON-ready dictionary.
+    
+    Parameters:
+        s (AssetSoftware): The asset software ORM instance to serialize.
+    
+    Returns:
+        dict: Dictionary with keys:
+            - `id`: software identifier (string)
+            - `asset_id`: associated asset identifier (string)
+            - `name`: software name
+            - `version`: software version or `None`
+            - `cpe`: CPE string or `None`
+            - `last_scanned`: ISO 8601 timestamp string of last scan, or `None`
+    """
     return {
         "id": s.id,
         "asset_id": s.asset_id,
@@ -275,6 +426,16 @@ def _sw_to_dict(s: AssetSoftware) -> dict:
 
 
 def _vuln_to_dict(v: AssetVulnerability) -> dict:
+    """
+    Serialize an AssetVulnerability ORM instance into a JSON-ready dictionary.
+    
+    Parameters:
+        v (AssetVulnerability): The vulnerability ORM instance to serialize.
+    
+    Returns:
+        dict: A dictionary with keys `id`, `asset_id`, `cve_id`, `cvss_score`, `description`, `severity`,
+        `published_at`, and `fetched_at`. Timestamp fields are ISO 8601 strings when present, otherwise `None`.
+    """
     return {
         "id": v.id,
         "asset_id": v.asset_id,

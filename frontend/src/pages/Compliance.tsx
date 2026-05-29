@@ -25,6 +25,12 @@ const FRAMEWORKS: { id: ComplianceFramework; label: string; description: string 
   { id: 'nist', label: 'NIST CSF', description: 'NIST Cybersecurity Framework' },
 ];
 
+/**
+ * Format an ISO 8601 timestamp into a localized short date and time string.
+ *
+ * @param iso - The ISO 8601 date-time string to format
+ * @returns The localized date and time using abbreviated month, numeric day and year, and two-digit hour and minute (e.g., "Jan 1, 2020, 01:23 PM")
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',
