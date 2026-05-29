@@ -76,6 +76,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     UEBA baseline loop (when enabled), retention loop, and threat feed manager. Yields control to the application runtime.
     On shutdown, stops the Kafka consumer, stops the syslog server if it is running, and stops the correlation engine cleanup task.
     """
+    # Apply any pending DB migrations before starting services
+    try:
+        import asyncio
+        import subprocess as _sp
+        _base = os.path.dirname(os.path.dirname(__file__))
+        _env = {**os.environ, "DATABASE_URL": settings.DATABASE_URL}
+        proc = await asyncio.create_subprocess_exec(
+            "python", "-m", "alembic", "upgrade", "head",
+            cwd=_base, env=_env,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _out, _err = await asyncio.wait_for(proc.communicate(), timeout=60)
+        if proc.returncode != 0:
+            logger.warning("Alembic upgrade failed: %s", _err.decode()[-1000:])
+        else:
+            logger.info("Alembic: %s", (_out + _err).decode().strip() or "up to date")
+    except Exception as _exc:
+        logger.warning("Could not run alembic upgrade: %s", _exc)
+
     # Start correlation engine window-counter cleanup task
     if settings.CORRELATION_ENABLED:
         await correlation_engine.start_cleanup_task(
