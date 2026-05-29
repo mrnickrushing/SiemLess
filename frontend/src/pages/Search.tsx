@@ -322,7 +322,7 @@ const Search: React.FC = () => {
             <div className="p-8 text-center">
               <p className="text-cyber-danger">{(error as Error).message}</p>
             </div>
-          ) : data?.items.length === 0 ? (
+          ) : data?.items?.length === 0 ? (
             <EmptyState
               title="No results found"
               description={`No events matched "${submittedQuery}". Try a different search term.`}
@@ -371,16 +371,16 @@ const Search: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-2.5">
-                          {event.tags.length > 0 ? (
+                          {(event.tags ?? []).length > 0 ? (
                             <div className="flex flex-wrap gap-1">
-                              {event.tags.slice(0, 2).map((tag) => (
+                              {(event.tags ?? []).slice(0, 2).map((tag) => (
                                 <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-cyber-border/40 text-cyber-muted rounded font-mono">
                                   <Tag className="w-2.5 h-2.5" />
                                   {tag}
                                 </span>
                               ))}
-                              {event.tags.length > 2 && (
-                                <span className="text-[10px] text-cyber-muted">+{event.tags.length - 2}</span>
+                              {(event.tags ?? []).length > 2 && (
+                                <span className="text-[10px] text-cyber-muted">+{(event.tags ?? []).length - 2}</span>
                               )}
                             </div>
                           ) : (

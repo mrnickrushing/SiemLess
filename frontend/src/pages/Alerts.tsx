@@ -127,16 +127,16 @@ const AlertDetailPanel: React.FC<{ alertId: string; onClose: () => void }> = ({ 
                   <div className="flex items-center gap-1.5 text-xs text-cyber-muted mb-1.5"><Hash className="w-3.5 h-3.5" />Events</div>
                   <p className="text-sm text-cyber-text font-semibold">{alert.event_count}</p>
                 </div>
-                {alert.source_ips.length > 0 && (
+                {(alert.source_ips ?? []).length > 0 && (
                   <div className="bg-cyber-bg/50 border border-cyber-border/50 rounded-lg p-3">
                     <div className="flex items-center gap-1.5 text-xs text-cyber-muted mb-1.5"><Server className="w-3.5 h-3.5" />Source IPs</div>
-                    <div className="space-y-0.5">{alert.source_ips.map((ip) => <p key={ip} className="text-xs text-cyber-accent font-mono">{ip}</p>)}</div>
+                    <div className="space-y-0.5">{(alert.source_ips ?? []).map((ip) => <p key={ip} className="text-xs text-cyber-accent font-mono">{ip}</p>)}</div>
                   </div>
                 )}
-                {alert.affected_users.length > 0 && (
+                {(alert.affected_users ?? []).length > 0 && (
                   <div className="bg-cyber-bg/50 border border-cyber-border/50 rounded-lg p-3">
                     <div className="flex items-center gap-1.5 text-xs text-cyber-muted mb-1.5"><User className="w-3.5 h-3.5" />Affected Users</div>
-                    <div className="space-y-0.5">{alert.affected_users.map((u) => <p key={u} className="text-xs text-cyber-text font-mono">{u}</p>)}</div>
+                    <div className="space-y-0.5">{(alert.affected_users ?? []).map((u) => <p key={u} className="text-xs text-cyber-text font-mono">{u}</p>)}</div>
                   </div>
                 )}
               </div>
@@ -302,7 +302,7 @@ const Alerts: React.FC = () => {
           <AlertTriangle className="w-8 h-8 text-cyber-danger mx-auto mb-2" />
           <p className="text-cyber-danger">{(error as Error).message}</p>
         </div>
-      ) : data?.items.length === 0 ? (
+      ) : data?.items?.length === 0 ? (
         <EmptyState title="No alerts found" description="No alerts match your current filters." icon={<Bell className="w-8 h-8 text-cyber-muted" />} />
       ) : (
         <div className="space-y-3">
@@ -334,14 +334,14 @@ const Alerts: React.FC = () => {
               </div>
               <div className="flex items-center gap-4 mt-3 flex-wrap">
                 <div className="flex items-center gap-1.5 text-xs text-cyber-muted"><Clock className="w-3 h-3" />{formatTs(alert.created_at)}</div>
-                {alert.source_ips.length > 0 && (
+                {(alert.source_ips ?? []).length > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-cyber-muted">
                     <Server className="w-3 h-3" />
                     <span className="font-mono text-cyber-accent">{alert.source_ips[0]}</span>
                     {alert.source_ips.length > 1 && <span className="text-cyber-muted/60">+{alert.source_ips.length - 1}</span>}
                   </div>
                 )}
-                {alert.affected_users.length > 0 && (
+                {(alert.affected_users ?? []).length > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-cyber-muted">
                     <User className="w-3 h-3" />{alert.affected_users[0]}
                     {alert.affected_users.length > 1 && <span className="text-cyber-muted/60">+{alert.affected_users.length - 1}</span>}
