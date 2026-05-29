@@ -306,19 +306,6 @@ class CorrelationEngine:
         await db.flush()
         logger.info("Created alert '%s' from rule '%s'", title, rule.name)
 
-        # Trigger playbook evaluation in background (non-blocking)
-        try:
-            from app.database import AsyncSessionLocal
-            from app.services.playbook_engine import playbook_engine
-
-            async def _run_playbooks():
-                async with AsyncSessionLocal() as _db:
-                    await playbook_engine.evaluate_alert(_db, alert)
-
-            asyncio.create_task(_run_playbooks())
-        except Exception as _exc:
-            logger.debug("Playbook evaluation task creation failed: %s", _exc)
-
         return alert
 
     # -----------------------------------------------------------------------

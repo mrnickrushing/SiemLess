@@ -59,6 +59,7 @@ class PlaybookEngine:
         playbook_id: str,
         alert_id: Optional[str],
         triggered_by: str,
+        run_id: Optional[str] = None,
     ) -> None:
         async with AsyncSessionLocal() as db:
             pb_result = await db.execute(
@@ -69,7 +70,7 @@ class PlaybookEngine:
                 return
 
             run = PlaybookRun(
-                id=str(uuid.uuid4()),
+                id=run_id or str(uuid.uuid4()),
                 playbook_id=playbook_id,
                 alert_id=alert_id,
                 triggered_by=triggered_by,
@@ -243,7 +244,7 @@ class PlaybookEngine:
             raise ValueError(f"Playbook {playbook_id} not found")
 
         run_id = str(uuid.uuid4())
-        asyncio.create_task(self._execute(playbook_id, alert_id, triggered_by))
+        asyncio.create_task(self._execute(playbook_id, alert_id, triggered_by, run_id=run_id))
         return run_id
 
 

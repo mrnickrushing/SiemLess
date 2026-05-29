@@ -10,6 +10,7 @@ Endpoints:
   PUT  /auth/oidc/configs/{id}         — admin: update config
   DELETE /auth/oidc/configs/{id}       — admin: delete config
 """
+import base64
 import hashlib
 import logging
 import os
@@ -75,7 +76,6 @@ async def list_providers(db: AsyncSession = Depends(get_db)) -> list[SSOProvider
 @router.get("/{provider}/login", summary="Redirect to OIDC authorization endpoint")
 async def oidc_login(
     provider: str,
-    redirect_uri: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     cfg = await _get_provider(db, provider)
@@ -83,20 +83,28 @@ async def oidc_login(
     # Generate PKCE state and code_verifier
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
-    code_challenge = (
+    # RFC 7636 S256: BASE64URL(SHA256(code_verifier)) — no padding
+    code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode()).digest()
-        .hex()  # S256 in hex for simplicity; many IdPs also accept base64url
-    )
+    ).rstrip(b"=").decode()
 
-    # Store state → code_verifier in Redis with TTL
+    # Always use the canonical callback URI; store it alongside the verifier
+    # so the callback can reconstruct the exact redirect_uri sent to the IdP.
+    canonical_callback = f"/api/v1/auth/oidc/{provider}/callback"
+
+    # Store state → (code_verifier, redirect_uri) in Redis with TTL
     try:
+        import json as _json
         redis = await get_redis()
-        await redis.setex(f"oidc:state:{state}", _PKCE_TTL, code_verifier)
+        await redis.setex(
+            f"oidc:state:{state}",
+            _PKCE_TTL,
+            _json.dumps({"verifier": code_verifier, "redirect_uri": canonical_callback}),
+        )
     except Exception as exc:
         logger.warning("Redis unavailable for PKCE state storage: %s", exc)
-        # Fall back to storing state in the redirect (less secure but functional)
 
-    callback_uri = redirect_uri or f"/api/v1/auth/oidc/{provider}/callback"
+    callback_uri = canonical_callback
 
     params = {
         "response_type": "code",
@@ -121,19 +129,26 @@ async def oidc_callback(
 ) -> RedirectResponse:
     cfg = await _get_provider(db, provider)
 
-    # Retrieve code_verifier from Redis
+    # Retrieve code_verifier and stored redirect_uri from Redis
     code_verifier = None
+    callback_uri = f"/api/v1/auth/oidc/{provider}/callback"
     try:
+        import json as _json
         redis = await get_redis()
         stored = await redis.get(f"oidc:state:{state}")
         if stored:
-            code_verifier = stored.decode() if isinstance(stored, bytes) else stored
+            raw = stored.decode() if isinstance(stored, bytes) else stored
+            try:
+                pkce_data = _json.loads(raw)
+                code_verifier = pkce_data.get("verifier")
+                callback_uri = pkce_data.get("redirect_uri", callback_uri)
+            except Exception:
+                code_verifier = raw  # legacy plain-string fallback
             await redis.delete(f"oidc:state:{state}")
     except Exception as exc:
         logger.warning("Redis lookup for OIDC state failed: %s", exc)
 
-    # Exchange code for tokens
-    callback_uri = f"/api/v1/auth/oidc/{provider}/callback"
+    # Exchange code for tokens — redirect_uri must exactly match what was sent to IdP
     token_payload: dict = {
         "grant_type": "authorization_code",
         "code": code,

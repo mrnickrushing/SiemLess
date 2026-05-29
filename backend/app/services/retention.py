@@ -159,7 +159,7 @@ class RetentionService:
         return {
             "hot_count": hot_count_result.scalar() or 0,
             "cold_count": cold_count_result.scalar() or 0,
-            "oldest_event": (oldest_result.scalar() or "").isoformat() if oldest_result.scalar() else None,
+            "oldest_event": (lambda v: v.isoformat() if v else None)(oldest_result.scalar()),
         }
 
 

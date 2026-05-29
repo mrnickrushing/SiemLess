@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.alert import Alert
 from app.models.event import SecurityEvent
 from app.models.rule import CorrelationRule
 from app.models.watchlist import WatchlistEntry
@@ -162,16 +163,45 @@ async def store_event(
     except Exception as exc:
         logger.debug("UEBA task creation failed: %s", exc)
 
-    # Run correlation engine; dispatch alert notifications as a background task
+    # Run correlation engine
+    triggered_alerts = []
     try:
-        alerts = await correlation_engine.evaluate_event(db, event)
-        for alert in alerts:
+        triggered_alerts = await correlation_engine.evaluate_event(db, event)
+    except Exception as exc:
+        logger.warning("Correlation error for event %s: %s", event.id, exc)
+
+    # Commit everything (event + any new/updated alerts) before dispatching
+    # background tasks that open their own sessions to look up these rows.
+    await db.commit()
+
+    # Dispatch alert notifications and playbook evaluations post-commit so
+    # the rows are visible to the new sessions opened by these tasks.
+    for alert in triggered_alerts:
+        try:
             rule_result = await db.execute(
                 select(CorrelationRule).where(CorrelationRule.id == alert.rule_id)
             )
             rule = rule_result.scalar_one_or_none()
             asyncio.create_task(_safe_send_alert(alert, rule))
-    except Exception as exc:
-        logger.warning("Correlation error for event %s: %s", event.id, exc)
+        except Exception as exc:
+            logger.warning("Alert notification dispatch failed: %s", exc)
+
+        try:
+            from app.services.playbook_engine import playbook_engine
+
+            alert_id = str(alert.id)
+
+            async def _run_playbooks(aid: str = alert_id) -> None:
+                async with AsyncSessionLocal() as _db:
+                    alert_result = await _db.execute(
+                        select(Alert).where(Alert.id == aid)
+                    )
+                    _alert = alert_result.scalar_one_or_none()
+                    if _alert:
+                        await playbook_engine.evaluate_alert(_db, _alert)
+
+            asyncio.create_task(_run_playbooks())
+        except Exception as exc:
+            logger.debug("Playbook evaluation task creation failed: %s", exc)
 
     return event
