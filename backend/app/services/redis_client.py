@@ -38,6 +38,9 @@ class _NoopRedis:
     async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
         pass
 
+    async def setex(self, key: str, ttl: int, value: Any) -> None:
+        pass
+
     async def delete(self, *keys: str) -> None:
         pass
 
@@ -116,6 +119,10 @@ class RedisClient:
         except Exception as exc:
             logger.debug("Redis SET %s failed: %s", key, exc)
 
+    async def setex(self, key: str, ttl: int, value: Any) -> None:
+        """Set key with TTL in seconds (SETEX)."""
+        await self.set(key, value, ex=ttl)
+
     async def set_json(self, key: str, value: Any, ex: Optional[int] = None) -> None:
         await self.set(key, json.dumps(value), ex=ex)
 
@@ -159,3 +166,8 @@ class RedisClient:
 from app.config import settings as _settings  # noqa: E402
 
 redis_client = RedisClient(_settings.REDIS_URL)
+
+
+async def get_redis() -> RedisClient:
+    """Dependency / utility: returns the shared Redis client."""
+    return redis_client

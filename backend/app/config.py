@@ -99,6 +99,23 @@ class Settings(BaseSettings):
     EVENT_RETENTION_DAYS: int = 90
     RETENTION_CHECK_INTERVAL: int = 86400  # seconds between purge runs (1 day)
 
+    # UEBA
+    UEBA_ENABLED: bool = False
+    UEBA_ANOMALY_THRESHOLD: float = 60.0
+
+    # Asset discovery
+    ASSET_DISCOVERY_ENABLED: bool = True
+
+    # S3 / archival
+    S3_BUCKET: Optional[str] = None
+    S3_PREFIX: str = "siemless/cold/"
+    AWS_REGION: str = "us-east-1"
+
+    # Kafka
+    KAFKA_BOOTSTRAP_SERVERS: Optional[str] = None
+    KAFKA_TOPIC: str = "siemless-events"
+    KAFKA_GROUP_ID: str = "siemless-consumer"
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def normalise_db_url(cls, v: str) -> str:
