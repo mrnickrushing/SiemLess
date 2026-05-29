@@ -1,6 +1,7 @@
 """
 Alert notification service: sends alerts via email, Slack, or generic webhook.
 """
+import asyncio
 import json
 import logging
 import smtplib
@@ -54,26 +55,26 @@ class AlertService:
             await self._http_client.aclose()
 
     async def send_alert(self, alert: Alert, rule: Optional[CorrelationRule] = None) -> None:
-        """Dispatch alert notifications to all configured channels."""
+        """Dispatch alert notifications concurrently to all configured channels."""
         tasks = []
 
         if settings.ALERT_EMAIL and settings.SMTP_HOST:
-            try:
-                await self.send_email(alert, rule)
-            except Exception as exc:
-                logger.error("Failed to send email alert: %s", exc)
+            tasks.append(self.send_email(alert, rule))
 
         if settings.SLACK_WEBHOOK_URL:
-            try:
-                await self.send_slack(alert, rule)
-            except Exception as exc:
-                logger.error("Failed to send Slack alert: %s", exc)
+            tasks.append(self.send_slack(alert, rule))
 
         if settings.ALERT_WEBHOOK_URL:
-            try:
-                await self.send_webhook(alert, rule)
-            except Exception as exc:
-                logger.error("Failed to send webhook alert: %s", exc)
+            tasks.append(self.send_webhook(alert, rule))
+
+        if not tasks:
+            return
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                channel = ["email", "slack", "webhook"][i] if i < 3 else f"channel[{i}]"
+                logger.error("Failed to send %s alert for alert %s: %s", channel, alert.id, res)
 
     async def send_email(self, alert: Alert, rule: Optional[CorrelationRule] = None) -> None:
         """Send alert via SMTP email."""

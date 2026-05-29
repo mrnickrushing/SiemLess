@@ -1,5 +1,7 @@
 """
 Ingest router: accepts events via JSON, batch, raw log string, or file upload.
+
+All endpoints require authentication via get_current_user.
 """
 import logging
 from typing import Optional
@@ -8,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.deps import get_current_user
 from app.models.event import SecurityEvent
 from app.schemas.event import BatchIngest, RawLogIngest, SecurityEventCreate, SecurityEventRead
 from app.services.event_store import store_event
@@ -19,17 +22,10 @@ logger = logging.getLogger(__name__)
 _parser = LogParser()
 
 
-# Keep a thin local alias for backward-compat in case anything imports _store_event
 async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_source: str = "api") -> SecurityEvent:
     """
     Store a normalized security event and return the persisted event record.
-    
-    Parameters:
-        event_data (SecurityEventCreate): Normalized security event payload to persist.
-        log_source (str): Identifier of the event's origin (defaults to "api").
-    
-    Returns:
-        SecurityEvent: The persisted security event with database-populated fields (for example, identifiers and timestamps).
+    Note: store_event commits internally; callers must NOT commit after calling this.
     """
     return await store_event(db, event_data, log_source)
 
@@ -43,10 +39,11 @@ async def _store_event(db: AsyncSession, event_data: SecurityEventCreate, log_so
 async def ingest_event(
     event_data: SecurityEventCreate,
     db: AsyncSession = Depends(get_db),
+    _username: str = Depends(get_current_user),
 ) -> SecurityEvent:
     """Ingest a single pre-parsed security event."""
+    # store_event commits internally; do not commit again here
     event = await _store_event(db, event_data)
-    await db.commit()
     await db.refresh(event)
     return event
 
@@ -59,6 +56,7 @@ async def ingest_event(
 async def ingest_batch(
     batch: BatchIngest,
     db: AsyncSession = Depends(get_db),
+    _username: str = Depends(get_current_user),
 ) -> dict:
     """Ingest up to 1000 security events in a single request."""
     if len(batch.events) > 1000:
@@ -71,13 +69,13 @@ async def ingest_batch(
     errors = 0
     for event_data in batch.events:
         try:
+            # store_event commits internally per event
             await _store_event(db, event_data)
             stored += 1
         except Exception as exc:
             logger.warning("Failed to store batch event: %s", exc)
             errors += 1
 
-    await db.commit()
     return {"stored": stored, "errors": errors, "total": len(batch.events)}
 
 
@@ -90,6 +88,7 @@ async def ingest_batch(
 async def ingest_raw(
     payload: RawLogIngest,
     db: AsyncSession = Depends(get_db),
+    _username: str = Depends(get_current_user),
 ) -> SecurityEvent:
     """
     Ingest a raw log string. The parser auto-detects format (syslog, JSON, CEF)
@@ -100,8 +99,8 @@ async def ingest_raw(
         parsed["log_type"] = payload.hint
 
     event_schema = _parser.normalize(parsed)
+    # store_event commits internally; do not commit again here
     event = await _store_event(db, event_schema, log_source=payload.log_source)
-    await db.commit()
     await db.refresh(event)
     return event
 
@@ -116,13 +115,12 @@ async def ingest_file(
     log_source: str = Form(default="file"),
     log_type_hint: Optional[str] = Form(default=None),
     db: AsyncSession = Depends(get_db),
+    _username: str = Depends(get_current_user),
 ) -> dict:
     """
     Upload a plain-text log file (one log entry per line).
-    Lines are parsed and stored in batches of 200.
-    The response always reflects actual lines processed at the time of return;
-    if the request is cancelled mid-flight the caller will receive an incomplete
-    response — this is surfaced via the 'stored' + 'errors' counts.
+    Lines are parsed and stored. store_event commits per-event internally;
+    no additional commit is needed here.
     """
     if file.content_type and not (
         file.content_type.startswith("text/")
@@ -157,16 +155,12 @@ async def ingest_file(
                 if log_type_hint and not parsed.get("log_type"):
                     parsed["log_type"] = log_type_hint
                 event_schema = _parser.normalize(parsed)
+                # store_event handles its own commit internally
                 await _store_event(db, event_schema, log_source=log_source)
                 stored += 1
             except Exception as exc:
                 logger.debug("Error parsing line: %s | %s", line[:80], exc)
                 errors += 1
-
-        # Commit each batch. Alert notification tasks (created inside _store_event
-        # via asyncio.create_task) may begin executing after this commit, which is
-        # the correct ordering — events are visible in the DB before notifications fire.
-        await db.commit()
 
     return {
         "filename": file.filename,
