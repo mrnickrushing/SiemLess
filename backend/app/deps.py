@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,11 +25,24 @@ def create_access_token(subject: str) -> str:
 
 
 def _try_decode_jwt(token: str) -> Optional[str]:
-    """Return username from a valid JWT, or None if it is not a JWT."""
+    """Return username from a valid JWT, or None if it is not a JWT.
+
+    Raises HTTPException 401 immediately for expired JWTs so the caller
+    does not fall through to the API token lookup path.
+    """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload.get("sub") or None
+    except ExpiredSignatureError:
+        # Token is a valid JWT but has expired — reject immediately; do NOT
+        # fall through to the API token path with the same raw token value.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except JWTError:
+        # Not a JWT (e.g. a raw API token) — let the caller try the API token path.
         return None
 
 
@@ -73,12 +86,13 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Try JWT first (fast path — no DB hit)
+    # Try JWT first (fast path — no DB hit).
+    # _try_decode_jwt raises 401 immediately for expired JWTs.
     username = _try_decode_jwt(raw_token)
     if username:
         return username
 
-    # Fall back to API token lookup (DB hit, but only when JWT decode fails)
+    # Fall back to API token lookup (DB hit, only when JWT decode fails)
     username = await _lookup_api_token(raw_token)
     if username:
         return username

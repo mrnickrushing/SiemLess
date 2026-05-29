@@ -9,15 +9,16 @@ Query syntax (with proper operator precedence):
   - OR  (lower prec):   `severity:critical OR severity:high`
   - NOT:                `NOT severity:low`
   - Grouping:           `severity:high AND (source_ip:10.0.0.1 OR source_ip:192.168.1.1)`
-  - Implicit AND:       `failed ssh` → `failed AND ssh`
+  - Implicit AND:       `failed ssh` -> `failed AND ssh`
 
 Security hardening:
-  - Per-user rate limiting (60 req/min)
+  - Per-user rate limiting (60 req/min) with TTL-based eviction to prevent memory leaks
   - Max query length (500 chars) and token count (20)
   - ILIKE wildcard escaping (% and _ in user input are literals, not wildcards)
   - Query execution timeout (5 s)
   - Sensitive field redaction in raw_log output
   - Audit log of every search with username
+  - Unknown field names return HTTP 400 instead of silently falling through
 """
 import asyncio
 import logging
@@ -48,15 +49,27 @@ _QUERY_TIMEOUT = 5.0  # seconds
 
 # ---------------------------------------------------------------------------
 # Rate limiting (per authenticated user)
+# Uses TTL-based eviction to prevent unbounded memory growth.
 # ---------------------------------------------------------------------------
 _RATE_WINDOW = 60   # seconds
 _RATE_LIMIT = 60    # requests per window
 _rate_attempts: dict[str, list[float]] = defaultdict(list)
+_rate_last_cleanup: float = 0.0
+_RATE_CLEANUP_INTERVAL = 300.0  # evict idle users every 5 minutes
 
 
 def _check_rate_limit(username: str) -> None:
+    global _rate_last_cleanup
     now = time.monotonic()
     cutoff = now - _RATE_WINDOW
+
+    # Periodic full cleanup: evict users whose last attempt is older than the window
+    if now - _rate_last_cleanup > _RATE_CLEANUP_INTERVAL:
+        stale = [u for u, ts in _rate_attempts.items() if not ts or max(ts) < cutoff]
+        for u in stale:
+            del _rate_attempts[u]
+        _rate_last_cleanup = now
+
     attempts = [t for t in _rate_attempts[username] if t >= cutoff]
     if len(attempts) >= _RATE_LIMIT:
         raise HTTPException(
@@ -70,7 +83,6 @@ def _check_rate_limit(username: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Sensitive field redaction
-# Strips credentials / tokens from raw_log before returning to clients.
 # ---------------------------------------------------------------------------
 _REDACT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r'(?i)(password\s*[=:]\s*)\S+'),          r'\1[REDACTED]'),
@@ -93,7 +105,6 @@ def _redact(text: str | None) -> str | None:
 
 # ---------------------------------------------------------------------------
 # ILIKE wildcard escaping
-# Prevents user-supplied % and _ from acting as ILIKE wildcards.
 # ---------------------------------------------------------------------------
 def _escape_ilike(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -149,16 +160,14 @@ def _tokenize(q: str) -> list[tuple[str, str]]:
             i += 1
             continue
         if ch == '"':
-            # Quoted term: consume until closing quote
             j = i + 1
             while j < len(q) and q[j] != '"':
                 j += 1
             tokens.append((_T.TERM, q[i + 1:j]))
             i = j + 1
             continue
-        # Unquoted word: up to whitespace or parens
         j = i
-        while j < len(q) and not q[j].isspace() and q[j] not in '()"':
+        while j < len(q) and not q[j].isspace() and q[j] not in '()':
             j += 1
         word = q[i:j]
         i = j
@@ -177,15 +186,7 @@ def _tokenize(q: str) -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
-# Recursive-descent parser  →  AST
-#
-# Grammar (standard boolean precedence: NOT > AND > OR):
-#   expr     := and_expr  (OR  and_expr)*
-#   and_expr := not_expr  (AND? not_expr)*   ← implicit AND for adjacent atoms
-#   not_expr := NOT? atom
-#   atom     := LPAREN expr RPAREN | TERM
-#
-# AST nodes: ("AND", l, r) | ("OR", l, r) | ("NOT", child) | ("TERM", value)
+# Recursive-descent parser -> AST
 # ---------------------------------------------------------------------------
 class _Parser:
     def __init__(self, tokens: list[tuple[str, str]]) -> None:
@@ -221,7 +222,6 @@ class _Parser:
 
     def _and_expr(self) -> tuple:
         left = self._not_expr()
-        # Continue while next token can start another atom (explicit or implicit AND)
         while self._peek() in (_T.AND, _T.TERM, _T.LPAREN, _T.NOT):
             if self._peek() == _T.AND:
                 self._consume(_T.AND)
@@ -245,7 +245,7 @@ class _Parser:
 
 
 # ---------------------------------------------------------------------------
-# AST → SQLAlchemy clause
+# AST -> SQLAlchemy clause
 # ---------------------------------------------------------------------------
 def _ast_to_clause(node: tuple, highlight_terms: list[str]) -> Any:
     kind = node[0]
@@ -263,7 +263,6 @@ def _ast_to_clause(node: tuple, highlight_terms: list[str]) -> Any:
     if kind == "NOT":
         return not_(_ast_to_clause(node[1], highlight_terms))
 
-    # TERM: check for field:value, else full-text
     value: str = node[1]
     m = _FIELD_TERM_RE.match(value)
     if m:
@@ -273,7 +272,8 @@ def _ast_to_clause(node: tuple, highlight_terms: list[str]) -> Any:
             escaped = _escape_ilike(val)
             highlight_terms.append(val)
             return FIELD_MAP[field].ilike(f"%{escaped}%", escape="\\")
-        # Unknown field name → fall through to full-text search
+        # Unknown field name: raise so the caller returns HTTP 400
+        raise ValueError(f"Unknown search field: '{field}'. Valid fields: {', '.join(sorted(FIELD_MAP))}")
 
     escaped = _escape_ilike(value)
     highlight_terms.append(value)
@@ -287,7 +287,7 @@ def _ast_to_clause(node: tuple, highlight_terms: list[str]) -> Any:
 
 
 def _build_search_clause(q: str) -> tuple[Any, list[str]]:
-    """Parse query string → (sqlalchemy clause, highlight terms). Raises ValueError on bad input."""
+    """Parse query string -> (sqlalchemy clause, highlight terms). Raises ValueError on bad input."""
     if len(q) > _MAX_QUERY_LEN:
         raise ValueError(f"Query too long (max {_MAX_QUERY_LEN} characters)")
 
@@ -305,7 +305,7 @@ def _build_search_clause(q: str) -> tuple[Any, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Highlight helper
+# Highlight helper — uses regex for correct case-insensitive replacement
 # ---------------------------------------------------------------------------
 def _build_highlight(text_content: str | None, terms: list[str], max_len: int = 200) -> str:
     if not text_content or not terms:
@@ -317,19 +317,22 @@ def _build_highlight(text_content: str | None, terms: list[str], max_len: int = 
             start = max(0, idx - 60)
             end = min(len(text_content), idx + len(term) + 60)
             snippet = text_content[start:end]
-            highlight = snippet.replace(
-                text_content[idx:idx + len(term)],
-                f"**{text_content[idx:idx + len(term)]}**",
-                1,
+            # Use re.sub with IGNORECASE for correct replacement of any case variant
+            highlighted = re.sub(
+                re.escape(term),
+                lambda m: f"**{m.group(0)}**",
+                snippet,
+                count=1,
+                flags=re.IGNORECASE,
             )
             prefix = "..." if start > 0 else ""
             suffix = "..." if end < len(text_content) else ""
-            return f"{prefix}{highlight}{suffix}"
+            return f"{prefix}{highlighted}{suffix}"
     return text_content[:max_len]
 
 
 # ---------------------------------------------------------------------------
-# Async query runner (extracted so asyncio.wait_for can timeout both queries)
+# Async query runner
 # ---------------------------------------------------------------------------
 async def _run_queries(db: AsyncSession, count_query: Any, data_query: Any) -> tuple:
     total_result = await db.execute(count_query)
@@ -363,7 +366,7 @@ async def search_events(
     Search security events with a full boolean query language.
 
     Examples:
-    - `failed ssh` — implicit AND, full-text
+    - `failed ssh` -- implicit AND, full-text
     - `severity:high AND source_ip:10.0.0.1`
     - `severity:critical OR severity:high`
     - `severity:high AND (source_ip:10.0.0.1 OR source_ip:192.168.1.1)`
