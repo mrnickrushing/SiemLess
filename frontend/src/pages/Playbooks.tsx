@@ -64,7 +64,7 @@ const RunsPanel: React.FC<{ playbookId: string }> = ({ playbookId }) => {
         Recent Runs
       </p>
       {isLoading && <RefreshCw className="w-4 h-4 animate-spin text-cyber-muted" />}
-      {!isLoading && !data?.items.length && (
+      {!isLoading && !data?.items?.length && (
         <p className="text-xs text-cyber-muted italic">No runs yet.</p>
       )}
       <div className="space-y-2">
@@ -326,7 +326,7 @@ const Playbooks: React.FC = () => {
             <RefreshCw className="w-5 h-5 animate-spin" />
           </div>
         )}
-        {!isLoading && !data?.items.length && (
+        {!isLoading && !data?.items?.length && (
           <div className="text-center py-12">
             <Zap className="w-10 h-10 text-cyber-muted/30 mx-auto mb-3" />
             <p className="text-sm text-cyber-muted">No playbooks configured</p>

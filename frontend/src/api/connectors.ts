@@ -16,8 +16,12 @@ export async function getConnectors(params: {
   const q = new URLSearchParams();
   if (params.page !== undefined) q.set('page', String(params.page));
   if (params.page_size !== undefined) q.set('page_size', String(params.page_size));
-  const res = await client.get<PaginatedResponse<CloudConnector>>(`/connectors?${q.toString()}`);
-  return res.data;
+  const res = await client.get(`/connectors?${q.toString()}`);
+  const raw = res.data;
+  if (Array.isArray(raw)) {
+    return { items: raw, total: raw.length, page: 1, page_size: raw.length, pages: 1 };
+  }
+  return raw as PaginatedResponse<CloudConnector>;
 }
 
 /**

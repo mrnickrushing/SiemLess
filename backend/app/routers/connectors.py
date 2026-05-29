@@ -270,5 +270,6 @@ def _row_to_dict(c: CloudConnector) -> dict:
         "last_error": c.last_error,
         "poll_interval_seconds": c.poll_interval_seconds,
         "events_ingested_total": c.events_ingested_total,
+        "events_ingested": c.events_ingested_total,
         "created_at": c.created_at.isoformat(),
     }
