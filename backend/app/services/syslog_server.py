@@ -147,7 +147,9 @@ class SyslogServer:
         self._processor_task = asyncio.create_task(_process_queue(self._queue))
 
         # Start UDP listener
-        # NOTE: Port 514 requires root/CAP_NET_BIND_SERVICE on Linux.
+        # NOTE: Ports below 1024 require root/CAP_NET_BIND_SERVICE on Linux.
+        # Using port 5514 (>1024) avoids this restriction; the Railway TCP
+        # proxy forwards external port 514 to internal port 5514.
         # If binding fails, syslog ingestion is silently disabled for that
         # protocol. The /health endpoint reflects syslog.is_running status.
         try:

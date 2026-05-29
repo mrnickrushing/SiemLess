@@ -40,7 +40,7 @@ services:
       SECRET_KEY: change-me-in-production-use-openssl-rand-hex-32
       ADMIN_PASSWORD: siemless
       SYSLOG_HOST: "0.0.0.0"
-      SYSLOG_PORT: "514"
+      SYSLOG_PORT: "5514"
       # Optional: set these to enable external threat intel lookups
       # THREAT_INTEL_ABUSEIPDB_KEY: ""
       # THREAT_INTEL_VIRUSTOTAL_KEY: ""
@@ -52,7 +52,7 @@ services:
       # ALERT_EMAIL: ""
     ports:
       - "8000:8000"
-      - "514:514/udp"
+      - "514:5514/udp"
     depends_on:
       postgres:
         condition: service_healthy

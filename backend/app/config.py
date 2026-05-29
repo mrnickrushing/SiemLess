@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # Syslog server
     SYSLOG_HOST: str = "0.0.0.0"
-    SYSLOG_PORT: int = 514
+    SYSLOG_PORT: int = 5514
     SYSLOG_ENABLED: bool = True
 
     # Threat intel
