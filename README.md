@@ -33,7 +33,7 @@ open http://localhost:3000
 ## Log Ingestion
 
 ### Syslog
-Point your devices to `udp://localhost:514`. The syslog server starts automatically.
+Point your devices to `udp://localhost:514`. The syslog server starts automatically on internal port 5514; the Railway TCP proxy (or the Docker port mapping) forwards external port 514 to it.
 
 ### HTTP API
 ```bash
@@ -56,7 +56,7 @@ curl -X POST http://localhost:8000/api/v1/ingest/file \
 ### rsyslog forwarding
 ```
 # /etc/rsyslog.conf
-*.* @your-siemless-host:514
+*.* @your-siemless-host:514   # external port — proxied to internal 5514
 ```
 
 ## Built-in Correlation Rules
@@ -120,7 +120,7 @@ The API is available at `http://localhost:8000/api/v1`. Interactive docs at `htt
 | `DATABASE_URL` | (required) | PostgreSQL async URL |
 | `REDIS_URL` | `redis://redis:6379` | Redis connection URL |
 | `SECRET_KEY` | (required) | JWT signing secret |
-| `SYSLOG_PORT` | `514` | UDP syslog listener port |
+| `SYSLOG_PORT` | `5514` | UDP/TCP syslog listener port (internal; Railway proxy maps external 514 → 5514) |
 | `THREAT_INTEL_ABUSEIPDB_KEY` | - | AbuseIPDB API key |
 | `THREAT_INTEL_VIRUSTOTAL_KEY` | - | VirusTotal API key |
 | `SLACK_WEBHOOK_URL` | - | Slack incoming webhook |
