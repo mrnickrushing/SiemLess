@@ -16,7 +16,6 @@ import { getEvent } from '../api/events';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import JsonViewer from '../components/shared/JsonViewer';
-import type { SecurityEvent } from '../types';
 
 const FieldRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
   <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 py-2.5 border-b border-cyber-border/40 last:border-0">
@@ -56,10 +55,10 @@ const EventDetailPage: React.FC = () => {
     enabled: !!id,
   });
 
-  const formatTs = (ts: string | null) => {
+  const formatTs = (ts: string | null | undefined) => {
     if (!ts) return '—';
     try {
-      return format(parseISO(ts), 'yyyy-MM-dd HH:mm:ss.SSS \'UTC\'');
+      return format(parseISO(ts), 'yyyy-MM-dd HH:mm:ss.SSS');
     } catch {
       return ts;
     }
@@ -70,19 +69,18 @@ const EventDetailPage: React.FC = () => {
   };
 
   const handleSearchUser = (user: string) => {
-    navigate(`/search?q=${encodeURIComponent(`username:${user}`)}`);
+    navigate(`/search?q=${encodeURIComponent(`user:${user}`)}`);
   };
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-6">
         <Link
           to="/events"
           className="flex items-center gap-1.5 text-sm text-cyber-muted hover:text-cyber-text transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Events
+          Event Explorer
         </Link>
         <span className="text-cyber-muted/40">/</span>
         <span className="text-sm text-cyber-text font-mono truncate max-w-xs">{id}</span>
@@ -98,24 +96,23 @@ const EventDetailPage: React.FC = () => {
         <div className="cyber-card p-12 text-center">
           <p className="text-cyber-danger text-sm">{(error as Error).message}</p>
           <button onClick={() => navigate('/events')} className="cyber-btn-secondary mt-4 text-sm">
-            Back to Events
+            Back to Event Explorer
           </button>
         </div>
       )}
 
       {event && (
         <div className="space-y-6">
-          {/* Header */}
           <div className="cyber-card p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <div className="flex items-center gap-3 flex-wrap mb-2">
                   <SeverityBadge severity={event.severity} size="lg" />
-                  <span className="text-sm font-mono text-cyber-muted">{event.event_type}</span>
+                  <span className="text-sm font-mono text-cyber-muted">{event.action || event.log_type}</span>
                   <span className="text-cyber-muted/40">·</span>
                   <span className="text-sm text-cyber-muted">{event.category}</span>
                   <span className="text-cyber-muted/40">·</span>
-                  <span className="text-sm text-cyber-muted">{event.log_type}</span>
+                  <span className="text-sm text-cyber-muted">{event.log_source}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-mono text-cyber-muted/60">{event.id}</p>
@@ -128,13 +125,11 @@ const EventDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Message */}
             <div className="mt-4 bg-cyber-bg border border-cyber-border rounded-lg p-3">
-              <p className="text-sm text-cyber-text font-mono leading-relaxed break-all">{event.message}</p>
+              <p className="text-sm text-cyber-text font-mono leading-relaxed break-all">{event.message || 'No message captured'}</p>
             </div>
           </div>
 
-          {/* Network & Identity */}
           <div className="cyber-card p-6">
             <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3 flex items-center gap-2">
               <Server className="w-3.5 h-3.5" />
@@ -168,20 +163,19 @@ const EventDetailPage: React.FC = () => {
               />
               <FieldRow label="Destination Port" value={event.destination_port ?? '—'} />
               <FieldRow label="Hostname" value={event.hostname ?? '—'} />
-              <FieldRow label="Username"
+              <FieldRow label="User"
                 value={
-                  event.username ? (
-                    <button onClick={() => handleSearchUser(event.username!)} className="text-blue-400 hover:underline inline-flex items-center gap-1">
-                      <User className="w-3 h-3" />{event.username}<ExternalLink className="w-3 h-3" />
+                  event.user ? (
+                    <button onClick={() => handleSearchUser(event.user!)} className="text-blue-400 hover:underline inline-flex items-center gap-1">
+                      <User className="w-3 h-3" />{event.user}<ExternalLink className="w-3 h-3" />
                     </button>
                   ) : '—'
                 }
               />
-              <FieldRow label="Ingested At" value={formatTs(event.ingested_at)} />
+              <FieldRow label="Received At" value={formatTs(event.received_at)} />
             </div>
           </div>
 
-          {/* MITRE */}
           {(event.mitre_tactic || event.mitre_technique) && (
             <div className="cyber-card p-6">
               <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -195,7 +189,6 @@ const EventDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* Tags */}
           {(event.tags ?? []).length > 0 && (
             <div className="cyber-card p-6">
               <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -212,30 +205,6 @@ const EventDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* References */}
-          {(event.rule_id || event.alert_id) && (
-            <div className="cyber-card p-6">
-              <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3">References</h2>
-              <div className="bg-cyber-bg/50 border border-cyber-border/50 rounded-lg px-4">
-                {event.rule_id && (
-                  <FieldRow label="Rule ID" value={
-                    <Link to="/rules" className="text-cyber-accent hover:underline inline-flex items-center gap-1">
-                      {event.rule_id}<ExternalLink className="w-3 h-3" />
-                    </Link>
-                  } />
-                )}
-                {event.alert_id && (
-                  <FieldRow label="Alert ID" value={
-                    <Link to="/alerts" className="text-cyber-accent hover:underline inline-flex items-center gap-1">
-                      {event.alert_id}<ExternalLink className="w-3 h-3" />
-                    </Link>
-                  } />
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Parsed Fields */}
           {event.parsed_fields && Object.keys(event.parsed_fields).length > 0 && (
             <div className="cyber-card p-6">
               <h2 className="text-xs font-medium text-cyber-muted uppercase tracking-wider mb-3">Parsed Fields</h2>
@@ -243,7 +212,6 @@ const EventDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* Raw Log */}
           {event.raw_log && (
             <div className="cyber-card p-6">
               <div className="flex items-center justify-between mb-3">
