@@ -2,6 +2,7 @@
 Alerts router: CRUD for alerts and related event lookup.
 """
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -13,9 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models.alert import Alert
-from app.models.event import SecurityEvent
 from app.schemas.alert import AlertCreate, AlertList, AlertRead, AlertUpdate
-from app.schemas.event import SecurityEventList
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 logger = logging.getLogger(__name__)
@@ -59,13 +58,14 @@ async def list_alerts(
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
+    pages = max(1, math.ceil(total / page_size)) if page_size else 1
 
     offset = (page - 1) * page_size
     query = query.order_by(Alert.created_at.desc()).offset(offset).limit(page_size)
     result = await db.execute(query)
     items = list(result.scalars().all())
 
-    return AlertList(total=total, page=page, page_size=page_size, items=items)  # type: ignore[arg-type]
+    return AlertList(total=total, page=page, page_size=page_size, pages=pages, items=items)  # type: ignore[arg-type]
 
 
 @router.post(
