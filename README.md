@@ -56,7 +56,7 @@ curl -X POST http://localhost:8000/api/v1/ingest/file \
 ### rsyslog forwarding
 ```
 # /etc/rsyslog.conf
-*.* @your-siemless-host:514   # external port proxied to internal 5514
+*.* @your-siemless-host:514   # external port — proxied to internal 5514
 ```
 
 ## Built-in Correlation Rules
@@ -92,13 +92,25 @@ The API is available at `http://localhost:8000/api/v1`. Interactive docs are ava
 ## Architecture
 
 ```
-Sources -> SiemLess Stack
-Syslog -> FastAPI Backend (port 8000)
-HTTP API -> Log Parser -> Correlation Engine -> Alerting Service
-File Upload -> Threat Intel Service
-FastAPI Backend -> PostgreSQL
-FastAPI Backend -> Redis
-React Frontend (port 3000) -> Dashboard, Events, Alerts, Rules, Threat Intel
+┌─────────────┐    ┌──────────────────────────────────────────┐
+│   Sources   │    │              SiemLess Stack               │
+│             │    │                                           │
+│  Syslog ───────► │  FastAPI Backend (port 8000)             │
+│  HTTP API ──────►│    ├─ Log Parser                         │
+│  File Upload ───►│    ├─ Correlation Engine                  │
+│             │    │    ├─ Threat Intel Service               │
+└─────────────┘    │    └─ Alerting Service                   │
+                   │           │                               │
+                   │    PostgreSQL ◄──────────────────────────│
+                   │    Redis (pub/sub + cache)                │
+                   │                                           │
+                   │  React Frontend (port 3000)               │
+                   │    ├─ Dashboard                           │
+                   │    ├─ Events / Search                     │
+                   │    ├─ Alerts                              │
+                   │    ├─ Rules                               │
+                   │    └─ Threat Intel                        │
+                   └──────────────────────────────────────────┘
 ```
 
 ## Configuration
@@ -108,7 +120,7 @@ React Frontend (port 3000) -> Dashboard, Events, Alerts, Rules, Threat Intel
 | `DATABASE_URL` | (required) | PostgreSQL async URL |
 | `REDIS_URL` | `redis://redis:6379` | Redis connection URL |
 | `SECRET_KEY` | (required) | JWT signing secret |
-| `SYSLOG_PORT` | `5514` | UDP/TCP syslog listener port |
+| `SYSLOG_PORT` | `5514` | UDP/TCP syslog listener port (internal; Railway proxy maps external 514 → 5514) |
 | `THREAT_INTEL_ABUSEIPDB_KEY` | - | AbuseIPDB API key |
 | `THREAT_INTEL_VIRUSTOTAL_KEY` | - | VirusTotal API key |
 | `SLACK_WEBHOOK_URL` | - | Slack incoming webhook |
