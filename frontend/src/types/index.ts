@@ -401,6 +401,56 @@ export interface AssetVulnerability {
   fetched_at: string;
 }
 
+export type NetworkScanStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+export interface NetworkScan {
+  id: string;
+  target_cidr: string;
+  ports: number[];
+  status: NetworkScanStatus;
+  created_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  hosts_total: number;
+  hosts_scanned: number;
+  hosts_up: number;
+  open_ports: number;
+  error: string | null;
+  options: Record<string, unknown> | null;
+}
+
+export interface NetworkScanHostService {
+  port: number;
+  protocol: string;
+  service: string;
+}
+
+export interface NetworkScanHost {
+  id: string;
+  scan_id: string;
+  ip_address: string;
+  hostname: string | null;
+  status: 'up' | 'down';
+  latency_ms: number | null;
+  open_ports: number[];
+  services: NetworkScanHostService[];
+  mac_address: string | null;
+  os_guess: string | null;
+  asset_id: string | null;
+  scanned_at: string;
+  error: string | null;
+}
+
+export interface NetworkScanDetail extends NetworkScan {
+  hosts: NetworkScanHost[];
+}
+
+export interface NetworkScanCreate {
+  target_cidr: string;
+  ports?: string | number[];
+}
+
 // ── Integrations ─────────────────────────────────────────────────
 export interface IntegrationConfig {
   id: string;
