@@ -16,6 +16,14 @@ import { getEvent } from '../api/events';
 import { SeverityBadge } from '../components/shared/SeverityBadge';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import JsonViewer from '../components/shared/JsonViewer';
+import type { SecurityEvent } from '../types';
+
+type BackendEvent = SecurityEvent & {
+  action?: string | null;
+  log_source?: string;
+  received_at?: string;
+  user?: string | null;
+};
 
 const FieldRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
   <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 py-2.5 border-b border-cyber-border/40 last:border-0">
@@ -49,11 +57,13 @@ const EventDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data: event, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['event', id],
     queryFn: () => getEvent(id!),
     enabled: !!id,
   });
+
+  const event = data as BackendEvent | undefined;
 
   const formatTs = (ts: string | null | undefined) => {
     if (!ts) return '—';
@@ -112,7 +122,7 @@ const EventDetailPage: React.FC = () => {
                   <span className="text-cyber-muted/40">·</span>
                   <span className="text-sm text-cyber-muted">{event.category}</span>
                   <span className="text-cyber-muted/40">·</span>
-                  <span className="text-sm text-cyber-muted">{event.log_source}</span>
+                  <span className="text-sm text-cyber-muted">{event.log_source || event.log_type}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-mono text-cyber-muted/60">{event.id}</p>
@@ -172,7 +182,7 @@ const EventDetailPage: React.FC = () => {
                   ) : '—'
                 }
               />
-              <FieldRow label="Received At" value={formatTs(event.received_at)} />
+              <FieldRow label="Received At" value={formatTs(event.received_at || event.ingested_at)} />
             </div>
           </div>
 
