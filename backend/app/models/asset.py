@@ -1,4 +1,4 @@
-"""Asset inventory models."""
+"""Asset inventory and network scanner models."""
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -31,12 +31,6 @@ class Asset(Base):
     cve_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     def __repr__(self) -> str:
-        """
-        Return a concise, debug-friendly representation of the Asset.
-        
-        Returns:
-            str: String containing the asset's hostname and criticality, e.g. "<Asset hostname='host' criticality=high>".
-        """
         return f"<Asset hostname={self.hostname!r} criticality={self.criticality}>"
 
 
@@ -57,12 +51,6 @@ class AssetSoftware(Base):
     )
 
     def __repr__(self) -> str:
-        """
-        Provide a concise string representation of the AssetSoftware instance.
-        
-        Returns:
-            repr_str (str): String in the format "<AssetSoftware name='...' version='...'>".
-        """
         return f"<AssetSoftware name={self.name!r} version={self.version!r}>"
 
 
@@ -87,11 +75,41 @@ class AssetVulnerability(Base):
     )
 
     def __repr__(self) -> str:
-        """
-        Produce a concise string representation of the vulnerability for debugging and logging.
-        
-        Returns:
-            str: A string containing the CVE identifier and severity in the form
-                 "<AssetVulnerability cve='CVE-ID' severity=SEVERITY>".
-        """
         return f"<AssetVulnerability cve={self.cve_id!r} severity={self.severity}>"
+
+
+class NetworkScan(Base):
+    __tablename__ = "network_scans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    target_cidr: Mapped[str] = mapped_column(String(64), nullable=False)
+    ports: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    hosts_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hosts_scanned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hosts_up: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    open_ports: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    options: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class NetworkScanHost(Base):
+    __tablename__ = "network_scan_hosts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    scan_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    ip_address: Mapped[str] = mapped_column(String(45), nullable=False, index=True)
+    hostname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="down")
+    latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    open_ports: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    services: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    mac_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    os_guess: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    asset_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

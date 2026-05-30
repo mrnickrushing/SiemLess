@@ -1,5 +1,15 @@
 import client from './client';
-import type { Asset, AssetSoftware, AssetVulnerability, SecurityEvent, PaginatedResponse } from '../types';
+import type {
+  Asset,
+  AssetSoftware,
+  AssetVulnerability,
+  SecurityEvent,
+  PaginatedResponse,
+  NetworkScan,
+  NetworkScanCreate,
+  NetworkScanDetail,
+  NetworkScanHost,
+} from '../types';
 
 /**
  * Fetches a paginated list of assets with optional pagination and filter parameters.
@@ -113,5 +123,31 @@ export async function getAssetEvents(
  */
 export async function scanAssetCVEs(id: string): Promise<{ message: string; cve_count: number }> {
   const res = await client.post<{ message: string; cve_count: number }>(`/assets/${id}/scan-cves`);
+  return res.data;
+}
+
+export async function startNetworkScan(payload: NetworkScanCreate): Promise<NetworkScan> {
+  const res = await client.post<NetworkScan>('/network-scanner/scans', payload);
+  return res.data;
+}
+
+export async function getNetworkScans(params: { page?: number; page_size?: number; status?: string } = {}): Promise<PaginatedResponse<NetworkScan> & { active_scan_ids: string[] }> {
+  const q = new URLSearchParams();
+  if (params.page !== undefined) q.set('page', String(params.page));
+  if (params.page_size !== undefined) q.set('page_size', String(params.page_size));
+  if (params.status) q.set('status', params.status);
+  const res = await client.get<PaginatedResponse<NetworkScan> & { active_scan_ids: string[] }>(`/network-scanner/scans?${q.toString()}`);
+  return res.data;
+}
+
+export async function getNetworkScan(id: string): Promise<NetworkScanDetail> {
+  const res = await client.get<NetworkScanDetail>(`/network-scanner/scans/${id}`);
+  return res.data;
+}
+
+export async function getNetworkScanHosts(id: string, status?: string): Promise<NetworkScanHost[]> {
+  const q = new URLSearchParams();
+  if (status) q.set('status', status);
+  const res = await client.get<NetworkScanHost[]>(`/network-scanner/scans/${id}/hosts?${q.toString()}`);
   return res.data;
 }

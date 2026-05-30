@@ -18,6 +18,7 @@ import {
   getAssetEvents,
   scanAssetCVEs,
 } from '../api/assets';
+import NetworkScannerPanel from '../components/assets/NetworkScannerPanel';
 import type { Asset } from '../types';
 
 const CRITICALITY_COLORS: Record<string, string> = {
@@ -34,12 +35,6 @@ const CVSS_COLOR = (score: number) => {
   return 'text-blue-400';
 };
 
-/**
- * Formats an ISO 8601 timestamp into a localized short date and time string.
- *
- * @param iso - An ISO 8601 date-time string.
- * @returns The localized date and time using short month, numeric day, and two-digit hour and minute.
- */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -87,7 +82,6 @@ const AssetDetail: React.FC<{ asset: Asset }> = ({ asset }) => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-4 border-b border-cyber-border flex-shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -142,7 +136,6 @@ const AssetDetail: React.FC<{ asset: Asset }> = ({ asset }) => {
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-cyber-border flex-shrink-0">
         {tabs.map((tab) => (
           <button
@@ -160,7 +153,6 @@ const AssetDetail: React.FC<{ asset: Asset }> = ({ asset }) => {
         ))}
       </div>
 
-      {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'overview' && (
           <div className="space-y-4">
@@ -295,20 +287,17 @@ const Assets: React.FC = () => {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Left Panel */}
-      <div className="w-80 flex-shrink-0 border-r border-cyber-border flex flex-col">
-        {/* Header */}
+      <div className="w-96 flex-shrink-0 border-r border-cyber-border flex flex-col">
         <div className="px-4 py-3 border-b border-cyber-border">
           <div className="flex items-center gap-2 mb-3">
             <Monitor className="w-4 h-4 text-cyber-accent" />
-            <h1 className="text-sm font-semibold text-cyber-text">Assets</h1>
+            <h1 className="text-sm font-semibold text-cyber-text">Asset Inventory</h1>
             {data && (
               <span className="text-xs text-cyber-muted bg-cyber-border/30 px-1.5 py-0.5 rounded-full ml-auto">
                 {data.total}
               </span>
             )}
           </div>
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cyber-muted" />
             <input
@@ -320,7 +309,8 @@ const Assets: React.FC = () => {
           </div>
         </div>
 
-        {/* Filters */}
+        <NetworkScannerPanel />
+
         <div className="px-3 py-2 border-b border-cyber-border flex gap-2">
           <select
             className="cyber-input flex-1 text-xs"
@@ -347,7 +337,6 @@ const Assets: React.FC = () => {
           </select>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {isLoading && (
             <div className="flex items-center justify-center py-12 text-cyber-muted">
@@ -359,7 +348,7 @@ const Assets: React.FC = () => {
               <Monitor className="w-8 h-8 text-cyber-muted/30 mx-auto mb-2" />
               <p className="text-sm text-cyber-muted">No assets found</p>
               <p className="text-xs text-cyber-muted/60 mt-1">
-                Assets are auto-discovered from events
+                Run a network scan or ingest events to discover assets.
               </p>
             </div>
           )}
@@ -401,7 +390,6 @@ const Assets: React.FC = () => {
           ))}
         </div>
 
-        {/* Pagination */}
         {data && data.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-2 border-t border-cyber-border">
             <button
@@ -419,7 +407,6 @@ const Assets: React.FC = () => {
         )}
       </div>
 
-      {/* Right Panel */}
       <div className="flex-1 overflow-hidden">
         {selectedAsset ? (
           <AssetDetail asset={selectedAsset} />
