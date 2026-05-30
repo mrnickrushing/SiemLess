@@ -71,7 +71,7 @@ curl -X POST http://localhost:8000/api/v1/ingest/file \
 
 ## API Reference
 
-The API is available at `http://localhost:8000/api/v1`. Interactive docs at `http://localhost:8000/docs`.
+The API is available at `http://localhost:8000/api/v1`. Interactive docs are available at `http://localhost:8000/api/docs`.
 
 ### Key Endpoints
 

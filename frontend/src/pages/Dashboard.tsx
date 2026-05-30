@@ -83,7 +83,7 @@ const CustomTooltip: React.FC<{
   return null;
 };
 
-const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | null }> = ({ data, lastUpdated }) => {
+const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | null }> = ({ data }) => {
   const { overview, events_over_time, severity_distribution, category_distribution, recent_alerts, top_sources } = data;
 
   const chartData = events_over_time.map((item) => ({
@@ -99,10 +99,9 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
 
   return (
     <div className="space-y-6">
-      {/* Stat Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
-          title="Total Events Today"
+          title="Events Today"
           value={overview.total_events_today}
           icon={<Activity className="w-5 h-5" />}
           color="#2dd4aa"
@@ -118,30 +117,29 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
           subtitle={`${overview.critical_alerts} critical, ${overview.high_alerts} high`}
         />
         <StatCard
-          title="Active Rules"
+          title="Detection Rules"
           value={overview.active_rules}
           icon={<BookOpen className="w-5 h-5" />}
           color="#4a9eff"
           borderColor="#4a9eff"
-          subtitle="Correlation rules running"
+          subtitle="Enabled and running"
         />
         <StatCard
-          title="Threats Detected"
+          title="Threat Matches"
           value={overview.threats_detected}
           icon={<Crosshair className="w-5 h-5" />}
           color="#ff8c00"
           borderColor="#ff8c00"
-          subtitle="Matched threat indicators"
+          subtitle="Matched indicators"
         />
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 cyber-card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-cyber-text flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-cyber-accent" />
-              Events Over Time (24h)
+              Event Volume (24h)
             </h2>
           </div>
           {chartData.length > 0 ? (
@@ -211,7 +209,6 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
         </div>
       )}
 
-      {/* Bottom row: Recent Alerts + Source IPs table + GeoMap */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="cyber-card overflow-hidden">
           <div className="px-5 py-4 border-b border-cyber-border">
@@ -258,6 +255,8 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
                     <th className="text-right px-5 py-3 text-xs font-medium text-cyber-muted uppercase tracking-wider">Events</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-cyber-muted uppercase tracking-wider">Critical</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-cyber-muted uppercase tracking-wider">High</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-cyber-muted uppercase tracking-wider">Medium</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-cyber-muted uppercase tracking-wider">Low</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cyber-border/30">
@@ -267,6 +266,8 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
                       <td className="px-5 py-3 text-right text-sm font-semibold text-cyber-text tabular-nums">{src.count.toLocaleString()}</td>
                       <td className="px-5 py-3 text-right text-sm text-red-400 font-mono tabular-nums">{src.severity_breakdown?.critical || 0}</td>
                       <td className="px-5 py-3 text-right text-sm text-orange-400 font-mono tabular-nums">{src.severity_breakdown?.high || 0}</td>
+                      <td className="px-5 py-3 text-right text-sm text-yellow-400 font-mono tabular-nums">{src.severity_breakdown?.medium || 0}</td>
+                      <td className="px-5 py-3 text-right text-sm text-blue-400 font-mono tabular-nums">{src.severity_breakdown?.low || 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -276,7 +277,6 @@ const DashboardContent: React.FC<{ data: DashboardStats; lastUpdated: Date | nul
         </div>
       </div>
 
-      {/* GeoMap — full width below the table row */}
       {top_sources.length > 0 && (
         <GeoMap sources={top_sources} />
       )}
@@ -301,8 +301,8 @@ const Dashboard: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-cyber-text">Dashboard</h1>
-          <p className="text-sm text-cyber-muted mt-1">Security overview — auto-refreshes every 30s</p>
+          <h1 className="text-2xl font-bold text-cyber-text">Security Overview</h1>
+          <p className="text-sm text-cyber-muted mt-1">Live SOC snapshot, refreshes every 30s</p>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdated && (
@@ -332,7 +332,7 @@ const Dashboard: React.FC = () => {
       {isError && (
         <div className="cyber-card p-8 text-center">
           <AlertTriangle className="w-10 h-10 text-cyber-danger mx-auto mb-3" />
-          <p className="text-cyber-danger font-medium">Failed to load dashboard</p>
+          <p className="text-cyber-danger font-medium">Failed to load security overview</p>
           <p className="text-cyber-muted text-sm mt-1">{(error as Error).message}</p>
           <button onClick={() => refetch()} className="cyber-btn-secondary mt-4">Retry</button>
         </div>

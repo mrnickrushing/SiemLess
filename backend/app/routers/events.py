@@ -4,6 +4,7 @@ Events router: CRUD operations and real-time SSE streaming.
 import asyncio
 import json
 import logging
+import math
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 from uuid import UUID
@@ -102,13 +103,14 @@ async def list_events(
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
+    pages = max(1, math.ceil(total / page_size)) if page_size else 1
 
     offset = (page - 1) * page_size
     query = query.order_by(SecurityEvent.timestamp.desc()).offset(offset).limit(page_size)
     result = await db.execute(query)
     items = list(result.scalars().all())
 
-    return SecurityEventList(total=total, page=page, page_size=page_size, items=items)  # type: ignore[arg-type]
+    return SecurityEventList(total=total, page=page, page_size=page_size, pages=pages, items=items)  # type: ignore[arg-type]
 
 
 @router.get(
