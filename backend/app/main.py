@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.routers import alerts, auth, auth_oidc, events, ingest, rules, saved_searches, search, stats, threat_intel
 from app.routers import watchlists
-from app.routers import cases, compliance, ueba, connectors, retention, playbooks, assets, admin, integrations, threat_feeds
+from app.routers import cases, compliance, ueba, connectors, retention, playbooks, assets, admin, integrations, threat_feeds, network_scanner
 from app.services.correlation import correlation_engine
 from app.services.syslog_server import syslog_server
 from app.services.kafka_consumer import kafka_consumer_service
@@ -182,6 +182,7 @@ app.include_router(connectors.router, prefix=_API_PREFIX)
 app.include_router(retention.router, prefix=_API_PREFIX)
 app.include_router(playbooks.router, prefix=_API_PREFIX)
 app.include_router(assets.router, prefix=_API_PREFIX)
+app.include_router(network_scanner.router, prefix=_API_PREFIX)
 app.include_router(admin.router, prefix=_API_PREFIX)
 app.include_router(integrations.router, prefix=_API_PREFIX)
 app.include_router(threat_feeds.router, prefix=_API_PREFIX)
