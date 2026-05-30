@@ -13,8 +13,8 @@ export async function getStatsOverview(): Promise<StatsOverview> {
 
 export async function checkBackendHealth(): Promise<boolean> {
   try {
-    await client.get('/health');
-    return true;
+    const response = await fetch('/health');
+    return response.ok;
   } catch {
     return false;
   }
@@ -32,7 +32,6 @@ export interface AlertTimelinePoint {
 
 export async function getAlertTimeline(hours = 24): Promise<AlertTimelinePoint[]> {
   try {
-    // Backend exposes /stats/alert-trend — returns the same AlertTimelinePoint shape
     const response = await client.get<{ hours: number; since: string; timeline: AlertTimelinePoint[] }>(
       `/stats/alert-trend?hours=${hours}`
     );
