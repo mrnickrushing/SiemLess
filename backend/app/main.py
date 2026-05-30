@@ -18,34 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.routers import alerts, auth, auth_oidc, events, ingest, rules, saved_searches, search, stats, threat_intel
 from app.routers import watchlists
-
-
-def _run_alembic_upgrade() -> None:
-    """Apply any pending Alembic migrations at startup via subprocess."""
-    import subprocess
-    _log = logging.getLogger(__name__)
-    _base = os.path.dirname(os.path.dirname(__file__))
-    env = {**os.environ, "DATABASE_URL": settings.DATABASE_URL}
-    try:
-        result = subprocess.run(
-            ["python", "-m", "alembic", "upgrade", "head"],
-            cwd=_base,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode != 0:
-            _log.warning("Alembic upgrade failed:\n%s", result.stderr[-2000:])
-        else:
-            msg = (result.stdout + result.stderr).strip()
-            _log.info("Alembic: %s", msg or "up to date")
-    except Exception as exc:
-        _log.warning("Could not run alembic upgrade: %s", exc)
-
-
-_run_alembic_upgrade()
-
 from app.routers import cases, compliance, ueba, connectors, retention, playbooks, assets, admin, integrations, threat_feeds
 from app.services.correlation import correlation_engine
 from app.services.syslog_server import syslog_server
@@ -79,7 +51,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Apply any pending DB migrations before starting services
     try:
         import asyncio
-        import subprocess as _sp
         _base = os.path.dirname(os.path.dirname(__file__))
         _env = {**os.environ, "DATABASE_URL": settings.DATABASE_URL}
         proc = await asyncio.create_subprocess_exec(
@@ -231,7 +202,7 @@ async def health_check() -> JSONResponse:
     )
 
 # ---------------------------------------------------------------------------
-# React SPA — static files and catch-all fallback
+# React SPA static files and catch-all fallback
 # ---------------------------------------------------------------------------
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
@@ -252,7 +223,7 @@ if os.path.isdir(_STATIC_DIR):
         return FileResponse(_INDEX_HTML)
 else:
     logger.warning(
-        "Static directory '%s' not found — React frontend will not be served. "
+        "Static directory '%s' not found. React frontend will not be served. "
         "Build the frontend and place the output in backend/static/.",
         _STATIC_DIR,
     )
