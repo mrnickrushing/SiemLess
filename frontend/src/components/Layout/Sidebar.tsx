@@ -39,23 +39,48 @@ interface NavItem {
   badge?: number;
 }
 
-const BASE_NAV: Omit<NavItem, 'badge'>[] = [
-  { to: '/',             icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard',    hint: 'g d' },
-  { to: '/events',       icon: <Activity        className="w-5 h-5" />, label: 'Events',        hint: 'g e' },
-  { to: '/alerts',       icon: <Bell            className="w-5 h-5" />, label: 'Alerts',        hint: 'g a' },
-  { to: '/rules',        icon: <BookOpen        className="w-5 h-5" />, label: 'Rules',         hint: 'g r' },
-  { to: '/search',       icon: <Search          className="w-5 h-5" />, label: 'Search',        hint: 'g s' },
-  { to: '/saved-searches', icon: <Bookmark      className="w-5 h-5" />, label: 'Saved Searches' },
-  { to: '/threat-intel', icon: <Crosshair       className="w-5 h-5" />, label: 'Threat Intel',  hint: 'g t' },
-  { to: '/mitre',        icon: <Target          className="w-5 h-5" />, label: 'MITRE ATT&CK',  hint: 'g m' },
-  { to: '/watchlist',    icon: <List            className="w-5 h-5" />, label: 'Watchlist',     hint: 'g w' },
-  { to: '/cases',        icon: <Briefcase       className="w-5 h-5" />, label: 'Cases' },
-  { to: '/compliance',   icon: <ShieldCheck     className="w-5 h-5" />, label: 'Compliance' },
-  { to: '/ueba',         icon: <Brain           className="w-5 h-5" />, label: 'UEBA' },
-  { to: '/connectors',   icon: <Cloud           className="w-5 h-5" />, label: 'Connectors' },
-  { to: '/playbooks',    icon: <Zap             className="w-5 h-5" />, label: 'Playbooks' },
-  { to: '/assets',       icon: <Monitor         className="w-5 h-5" />, label: 'Assets' },
-  { to: '/settings',     icon: <Settings        className="w-5 h-5" />, label: 'Settings' },
+interface NavGroup {
+  title: string;
+  items: Omit<NavItem, 'badge'>[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: 'Monitor',
+    items: [
+      { to: '/', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Security Overview', hint: 'g d' },
+      { to: '/alerts', icon: <Bell className="w-5 h-5" />, label: 'Alert Queue', hint: 'g a' },
+      { to: '/events', icon: <Activity className="w-5 h-5" />, label: 'Event Explorer', hint: 'g e' },
+      { to: '/search', icon: <Search className="w-5 h-5" />, label: 'Hunt Search', hint: 'g s' },
+      { to: '/saved-searches', icon: <Bookmark className="w-5 h-5" />, label: 'Saved Hunts' },
+    ],
+  },
+  {
+    title: 'Investigate',
+    items: [
+      { to: '/cases', icon: <Briefcase className="w-5 h-5" />, label: 'Case Management' },
+      { to: '/threat-intel', icon: <Crosshair className="w-5 h-5" />, label: 'Threat Intelligence', hint: 'g t' },
+      { to: '/watchlist', icon: <List className="w-5 h-5" />, label: 'Watchlists', hint: 'g w' },
+      { to: '/mitre', icon: <Target className="w-5 h-5" />, label: 'ATT&CK Coverage', hint: 'g m' },
+      { to: '/assets', icon: <Monitor className="w-5 h-5" />, label: 'Asset Inventory' },
+    ],
+  },
+  {
+    title: 'Detect',
+    items: [
+      { to: '/rules', icon: <BookOpen className="w-5 h-5" />, label: 'Detection Rules', hint: 'g r' },
+      { to: '/ueba', icon: <Brain className="w-5 h-5" />, label: 'Behavior Analytics' },
+      { to: '/playbooks', icon: <Zap className="w-5 h-5" />, label: 'Response Playbooks' },
+    ],
+  },
+  {
+    title: 'Collect & Manage',
+    items: [
+      { to: '/connectors', icon: <Cloud className="w-5 h-5" />, label: 'Data Sources' },
+      { to: '/compliance', icon: <ShieldCheck className="w-5 h-5" />, label: 'Compliance Reports' },
+      { to: '/settings', icon: <Settings className="w-5 h-5" />, label: 'System Settings' },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -70,7 +95,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
   const [openAlertCount, setOpenAlertCount] = useState(0);
   const sseRef = useRef<EventSource | null>(null);
 
-  // Health check
   useEffect(() => {
     const check = async () => {
       const online = await checkBackendHealth();
@@ -81,7 +105,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Poll open alert count; bump on SSE events
   useEffect(() => {
     const fetchCount = async () => {
       try {
@@ -108,27 +131,57 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
     };
   }, []);
 
-  // Clear badge when navigating to /alerts
   useEffect(() => {
     if (location.pathname === '/alerts') {
       setOpenAlertCount(0);
     }
   }, [location.pathname]);
 
-  const navItems: NavItem[] = BASE_NAV.map((item) =>
-    item.to === '/alerts' ? { ...item, badge: openAlertCount || undefined } : item
-  );
+  const renderItem = (item: Omit<NavItem, 'badge'>) => {
+    const badge = item.to === '/alerts' ? openAlertCount || undefined : undefined;
+    const isActive = item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to);
+
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        onClick={onClose}
+        title={item.hint ? `${item.label} (${item.hint})` : item.label}
+        className={`group flex items-center gap-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150 border-l-2 pl-3 ${
+          isActive
+            ? 'bg-cyber-accent/10 text-cyber-accent border-l-cyber-accent'
+            : 'text-cyber-muted hover:text-cyber-text hover:bg-cyber-border/40 border-l-transparent'
+        }`}
+      >
+        <span className={`transition-colors ${isActive ? 'text-cyber-accent' : 'text-cyber-muted group-hover:text-cyber-text'}`}>
+          {item.icon}
+        </span>
+        <span className="flex-1">{item.label}</span>
+        {item.hint && !badge && (
+          <span className="hidden group-hover:flex items-center gap-0.5 opacity-60">
+            {item.hint.split(' ').map((k, i) => (
+              <kbd key={i} className="text-[9px] font-mono px-1 py-0.5 rounded bg-cyber-border text-cyber-muted">{k}</kbd>
+            ))}
+          </span>
+        )}
+        {badge != null && badge > 0 && (
+          <span className="min-w-[20px] h-5 px-1 rounded-full bg-cyber-danger text-white text-[10px] font-bold flex items-center justify-center">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
-    <aside className="w-64 h-full min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
-      {/* Logo + theme toggle */}
+    <aside className="w-72 h-full min-h-screen bg-cyber-card border-r border-cyber-border flex flex-col">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-cyber-border">
         <div className="w-9 h-9 rounded-lg bg-cyber-accent/10 border border-cyber-accent/30 flex items-center justify-center flex-shrink-0">
           <Shield className="w-5 h-5 text-cyber-accent" />
         </div>
         <div className="flex-1 min-w-0">
           <span className="text-lg font-bold text-cyber-text tracking-tight">SiemLess</span>
-          <div className="text-[10px] font-mono text-cyber-muted tracking-widest uppercase">Security Platform</div>
+          <div className="text-[10px] font-mono text-cyber-muted tracking-widest uppercase">SOC Command Center</div>
         </div>
         <button
           onClick={toggleTheme}
@@ -147,50 +200,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5" aria-label="Main navigation">
-        {navItems.map((item) => {
-          const isActive =
-            item.to === '/'
-              ? location.pathname === '/'
-              : location.pathname.startsWith(item.to);
-
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onClose}
-              title={item.hint ? `${item.label} (${item.hint})` : item.label}
-              className={`group flex items-center gap-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150
-                border-l-2 pl-3
-                ${
-                  isActive
-                    ? 'bg-cyber-accent/10 text-cyber-accent border-l-cyber-accent'
-                    : 'text-cyber-muted hover:text-cyber-text hover:bg-cyber-border/40 border-l-transparent'
-                }`}
-            >
-              <span className={`transition-colors ${isActive ? 'text-cyber-accent' : 'text-cyber-muted group-hover:text-cyber-text'}`}>
-                {item.icon}
-              </span>
-              <span className="flex-1">{item.label}</span>
-              {item.hint && !item.badge && (
-                <span className="hidden group-hover:flex items-center gap-0.5 opacity-60">
-                  {item.hint.split(' ').map((k, i) => (
-                    <kbd key={i} className="text-[9px] font-mono px-1 py-0.5 rounded bg-cyber-border text-cyber-muted">{k}</kbd>
-                  ))}
-                </span>
-              )}
-              {item.badge != null && item.badge > 0 && (
-                <span className="min-w-[20px] h-5 px-1 rounded-full bg-cyber-danger text-white text-[10px] font-bold flex items-center justify-center">
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto" aria-label="Main navigation">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="px-3 mb-2 text-[10px] font-mono uppercase tracking-[0.2em] text-cyber-muted/60">
+              {group.title}
+            </div>
+            <div className="space-y-0.5">
+              {group.items.map(renderItem)}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* Backend Status */}
       <div className="px-5 py-4 border-t border-cyber-border">
         <div className="flex items-center gap-2.5">
           {backendOnline === null ? (
@@ -204,7 +226,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose, onHelpOpen }) => {
         <div className="mt-2 text-[10px] font-mono text-cyber-muted/60">API: /api/v1</div>
       </div>
 
-      {/* Keyboard shortcut hint + Logout */}
       <div className="px-3 pb-4 space-y-1">
         <button
           onClick={onHelpOpen}
